@@ -3,7 +3,7 @@
 
 use clap::Parser;
 use jiff::civil::Date;
-use record_sheet::{render::PAGE_FILL_WEEKS, render_pdf, Sheet};
+use record_sheet::{render_pdf, RenderConfig, Sheet};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -31,8 +31,9 @@ fn main() -> anyhow::Result<()> {
         .date
         .unwrap_or_else(|| Date::from(jiff::Zoned::now()));
 
-    let sheet = Sheet::new(start, PAGE_FILL_WEEKS);
-    let pdf = render_pdf(&sheet);
+    let config = RenderConfig::default();
+    let sheet = Sheet::new(start, config.page_fill_weeks());
+    let pdf = render_pdf(&sheet, &config);
 
     let output_path = command_line
         .output

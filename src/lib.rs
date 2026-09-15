@@ -3,7 +3,7 @@
 pub mod render;
 pub mod sheet;
 
-pub use render::render_pdf;
+pub use render::{render_pdf, RenderConfig};
 pub use sheet::Sheet;
 
 use thiserror::Error;

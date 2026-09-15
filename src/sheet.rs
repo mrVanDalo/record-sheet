@@ -67,25 +67,46 @@ impl Sheet {
     /// Build a sheet of `week_count` week rows starting at the week that
     /// contains `start`.
     pub fn new(start: Date, week_count: usize) -> Sheet {
-        let mut weeks: Vec<Week> = Vec::with_capacity(week_count);
-        let mut cursor = start;
-        for _ in 0..week_count {
-            let mut week = Week::of(cursor);
-            // Blank out days before the start date in the first week.
-            for slot in week.days.iter_mut() {
-                if let Some(date) = *slot {
-                    if date < start {
-                        *slot = None;
-                    }
+        let mut sheet = Sheet {
+            start,
+            weeks: Vec::with_capacity(week_count),
+            labels: Vec::new(),
+        };
+        sheet.append_weeks(week_count);
+        sheet
+    }
+
+    /// Append `count` more week rows to the end of the sheet.
+    pub fn append_weeks(&mut self, count: usize) {
+        for _ in 0..count {
+            self.append_week();
+        }
+    }
+
+    /// Append one more week row, continuing from the last row (or the
+    /// week containing `start` for an empty sheet). Days before `start`
+    /// stay blank; month labels are kept in sync.
+    pub fn append_week(&mut self) {
+        let row = self.weeks.len();
+        let monday = monday_of(self.start) + ((row * WEEK_LENGTH) as i16).days();
+        let mut week = Week::of(monday);
+        // Blank out days before the start date in the first week.
+        for slot in week.days.iter_mut() {
+            if let Some(date) = *slot {
+                if date < self.start {
+                    *slot = None;
                 }
             }
-            weeks.push(week);
-            cursor += 7.days();
         }
+        self.weeks.push(week);
+        self.rebuild_labels();
+    }
 
-        // One label per month whose 1st appears in the grid.
-        let mut labels = Vec::new();
-        for (row, week) in weeks.iter().enumerate() {
+    /// Recompute `labels` from the grid: one label per month whose 1st
+    /// appears in the grid, spanning to the month's last visible day.
+    fn rebuild_labels(&mut self) {
+        self.labels.clear();
+        for (row, week) in self.weeks.iter().enumerate() {
             for (column, day) in week.days.iter().enumerate() {
                 let Some(date) = day else { continue };
                 if date.day() != 1 {
@@ -94,7 +115,7 @@ impl Sheet {
                 // Find the last visible day of the same month.
                 let mut end_row = row;
                 let mut end_column = column;
-                for (candidate_row, candidate_week) in weeks.iter().enumerate().skip(row) {
+                for (candidate_row, candidate_week) in self.weeks.iter().enumerate().skip(row) {
                     for (candidate_column, candidate_day) in candidate_week.days.iter().enumerate()
                     {
                         if let Some(candidate_date) = candidate_day {
@@ -107,7 +128,7 @@ impl Sheet {
                         }
                     }
                 }
-                labels.push(MonthLabel {
+                self.labels.push(MonthLabel {
                     row,
                     column,
                     name: month_name(date.month()),
@@ -115,12 +136,6 @@ impl Sheet {
                     end_column,
                 });
             }
-        }
-
-        Sheet {
-            start,
-            weeks,
-            labels,
         }
     }
 }
@@ -239,6 +254,67 @@ mod tests {
                 end_column: 6,
             }]
         );
+    }
+    #[test]
+    fn append_week_extends_grid() {
+        // 2026-09-15 is a Tuesday; 3 appended weeks continue the grid.
+        let mut sheet = Sheet::new(date(2026, 9, 15), 1);
+        sheet.append_week();
+        sheet.append_week();
+        sheet.append_week();
+        assert_eq!(sheet.weeks.len(), 4);
+        assert_eq!(sheet.weeks[3].days[0], Some(date(2026, 10, 5)));
+        assert_eq!(sheet.weeks[3].days[6], Some(date(2026, 10, 11)));
+        // Row 0 is unchanged: Monday still blanked before the start.
+        assert_eq!(sheet.weeks[0].days[0], None);
+        assert_eq!(sheet.weeks[0].days[1], Some(date(2026, 9, 15)));
+    }
+
+    #[test]
+    fn append_weeks_matches_sheet_new() {
+        let mut appended = Sheet::new(date(2026, 9, 15), 1);
+        appended.append_weeks(5);
+        assert_eq!(appended, Sheet::new(date(2026, 9, 15), 6));
+    }
+
+    #[test]
+    fn append_week_updates_labels() {
+        // 2026-09-15 is a Tuesday; the initial sheet has no label (no
+        // month-1st in 2026-09-15..=09-20). Appending two weeks crosses
+        // into October, whose 1st (Thursday) must gain a label that ends
+        // at the grid's edge and extends as the grid grows.
+        let mut sheet = Sheet::new(date(2026, 9, 15), 1);
+        assert!(sheet.labels.is_empty());
+        sheet.append_week();
+        assert!(sheet.labels.is_empty()); // 09-21..=09-27, still no 1st.
+        sheet.append_week();
+        // Grid now covers 2026-09-15 ..= 2026-10-04.
+        assert_eq!(
+            sheet.labels,
+            vec![MonthLabel {
+                row: 2,
+                column: 3,
+                name: "October",
+                end_row: 2,
+                end_column: 6,
+            }]
+        );
+    }
+
+    #[test]
+    fn append_weeks_keeps_month_label_end_open() {
+        // 2026-10-01 mid-sheet: appending weeks must move October's
+        // end_row forward.
+        let mut sheet = Sheet::new(date(2026, 9, 1), 2);
+        let before = sheet.labels[0].end_row;
+        sheet.append_weeks(3);
+        let label = sheet
+            .labels
+            .iter()
+            .find(|label| label.name == "October")
+            .unwrap();
+        assert!(label.end_row > before);
+        assert_eq!(label.end_row, sheet.weeks.len() - 1);
     }
 
     #[test]

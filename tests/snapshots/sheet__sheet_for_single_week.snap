@@ -1,0 +1,33 @@
+---
+source: tests/sheet.rs
+expression: "Sheet::new(date(2026, 9, 15), 1)"
+---
+Sheet {
+    start: 2026-09-15,
+    weeks: [
+        Week {
+            days: [
+                None,
+                Some(
+                    2026-09-15,
+                ),
+                Some(
+                    2026-09-16,
+                ),
+                Some(
+                    2026-09-17,
+                ),
+                Some(
+                    2026-09-18,
+                ),
+                Some(
+                    2026-09-19,
+                ),
+                Some(
+                    2026-09-20,
+                ),
+            ],
+        },
+    ],
+    labels: [],
+}
