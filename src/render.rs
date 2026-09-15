@@ -9,39 +9,39 @@ use pdf_writer::{Content, Finish, Name, Pdf, Rect, Ref, Str};
 // ---------------------------------------------------------------------------
 
 /// A4 width in points.
-const PAGE_W: f32 = 595.0;
+const PAGE_WIDTH: f32 = 595.0;
 /// A4 height in points.
-const PAGE_H: f32 = 842.0;
+const PAGE_HEIGHT: f32 = 842.0;
 /// Outer page margin.
 const MARGIN: f32 = 40.0;
 
 /// Calendar area width (left column).
-const CAL_W: f32 = 170.0;
+const CALENDAR_WIDTH: f32 = 170.0;
 /// Gap between calendar and writing area.
 const GAP: f32 = 20.0;
 /// Calendar cell height; the last row stretches to fill the remaining page
 /// height so the calendar runs to the end of the page.
-const CELL_H: f32 = 34.0;
+const CELL_HEIGHT: f32 = 34.0;
 
 /// Number of week rows that fill one page (header row + this many week
 /// rows between the page margins). Sheets built for rendering should use
 /// this count.
-pub const PAGE_FILL_WEEKS: usize = ((PAGE_H - 2.0 * MARGIN) / CELL_H - 1.0) as usize;
+pub const PAGE_FILL_WEEKS: usize = ((PAGE_HEIGHT - 2.0 * MARGIN) / CELL_HEIGHT - 1.0) as usize;
 /// Calendar table line width.
-const CAL_LINE: f32 = 0.7;
+const CALENDAR_LINE_WIDTH: f32 = 0.7;
 /// Writing line width.
-const WRITE_LINE: f32 = 0.5;
+const WRITING_LINE_WIDTH: f32 = 0.5;
 
 /// Inset from the cell's left edge where day numbers are drawn.
-const DAY_NUM_X: f32 = 4.0;
+const DAY_NUMBER_INSET_X: f32 = 4.0;
 /// Baseline lift of day numbers within a cell.
-const DAY_NUM_Y: f32 = 6.0;
+const DAY_NUMBER_BASELINE_LIFT: f32 = 6.0;
 /// Day number font size.
-const DAY_SIZE: f32 = 10.0;
+const DAY_NUMBER_FONT_SIZE: f32 = 10.0;
 /// Header font size.
-const HDR_SIZE: f32 = 10.0;
+const HEADER_FONT_SIZE: f32 = 10.0;
 /// Month name font size.
-const MONTH_SIZE: f32 = 9.0;
+const MONTH_NAME_FONT_SIZE: f32 = 9.0;
 
 /// Render `sheet` to PDF bytes.
 pub fn render_pdf(sheet: &Sheet) -> Vec<u8> {
@@ -57,7 +57,7 @@ pub fn render_pdf(sheet: &Sheet) -> Vec<u8> {
     pdf.pages(page_tree_id).kids([page_id]).count(1);
 
     let mut page = pdf.page(page_id);
-    page.media_box(Rect::new(0.0, 0.0, PAGE_W, PAGE_H));
+    page.media_box(Rect::new(0.0, 0.0, PAGE_WIDTH, PAGE_HEIGHT));
     page.parent(page_tree_id);
     page.contents(content_id);
     page.resources().fonts().pair(font_name, font_id);
@@ -72,67 +72,68 @@ pub fn render_pdf(sheet: &Sheet) -> Vec<u8> {
 }
 
 fn draw(sheet: &Sheet, font_name: Name) -> Vec<u8> {
-    let mut c = Content::new();
+    let mut content = Content::new();
 
     let weeks = sheet.weeks.len();
     debug_assert_eq!(weeks, PAGE_FILL_WEEKS, "sheet must fill the page exactly");
-    let top = PAGE_H - MARGIN;
+    let top = PAGE_HEIGHT - MARGIN;
     // Stretched row height: header + week rows exactly fill the page.
-    let row_h = (top - MARGIN) / (weeks as f32 + 1.0);
+    let row_height = (top - MARGIN) / (weeks as f32 + 1.0);
     // Grid top starts below the header row.
-    let grid_top = top - row_h;
-    // Calendar grid x extents.
-    let cal_x0 = MARGIN;
-    let cal_x1 = cal_x0 + CAL_W;
-    let col_w = CAL_W / 7.0;
+    let grid_top = top - row_height;
+    // Calendar grid horizontal extents.
+    let calendar_left = MARGIN;
+    let calendar_right = calendar_left + CALENDAR_WIDTH;
+    let column_width = CALENDAR_WIDTH / 7.0;
 
-    // Writing area x extents.
-    let wr_x0 = cal_x1 + GAP;
-    let wr_x1 = PAGE_W - MARGIN;
+    // Writing area horizontal extents.
+    let writing_left = calendar_right + GAP;
+    let writing_right = PAGE_WIDTH - MARGIN;
 
     // ------------------------------------------------------------------
     // Header row: weekday abbreviations.
     // ------------------------------------------------------------------
-    let hdr_names = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "So"];
-    for (i, name) in hdr_names.iter().enumerate() {
-        let x = cal_x0 + i as f32 * col_w + col_w / 2.0 - 8.0;
-        c.begin_text();
-        c.set_font(font_name, HDR_SIZE);
-        c.next_line(x, top - row_h + DAY_NUM_Y);
-        c.show(Str(name.as_bytes()));
-        c.end_text();
+    let weekday_abbreviations = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "So"];
+    for (column, abbreviation) in weekday_abbreviations.iter().enumerate() {
+        let x_position = calendar_left + column as f32 * column_width + column_width / 2.0 - 8.0;
+        content.begin_text();
+        content.set_font(font_name, HEADER_FONT_SIZE);
+        content.next_line(x_position, top - row_height + DAY_NUMBER_BASELINE_LIFT);
+        content.show(Str(abbreviation.as_bytes()));
+        content.end_text();
     }
 
     // ------------------------------------------------------------------
     // Calendar grid: horizontal lines.
     // ------------------------------------------------------------------
-    c.set_line_width(CAL_LINE);
+    content.set_line_width(CALENDAR_LINE_WIDTH);
     for row in 0..=weeks + 1 {
-        let y = top - row as f32 * row_h;
-        c.move_to(cal_x0, y);
-        c.line_to(cal_x1, y);
+        let y_position = top - row as f32 * row_height;
+        content.move_to(calendar_left, y_position);
+        content.line_to(calendar_right, y_position);
     }
     // Vertical lines.
-    for col in 0..=7 {
-        let x = cal_x0 + col as f32 * col_w;
-        c.move_to(x, MARGIN);
-        c.line_to(x, top);
+    for column in 0..=7 {
+        let x_position = calendar_left + column as f32 * column_width;
+        content.move_to(x_position, MARGIN);
+        content.line_to(x_position, top);
     }
-    c.stroke();
+    content.stroke();
 
     // ------------------------------------------------------------------
     // Day numbers and month names.
     // ------------------------------------------------------------------
     for (row, week) in sheet.weeks.iter().enumerate() {
-        for (col, day) in week.days.iter().enumerate() {
+        for (column, day) in week.days.iter().enumerate() {
             let Some(date) = day else { continue };
-            let x = cal_x0 + col as f32 * col_w + DAY_NUM_X;
-            let y = grid_top - row as f32 * row_h - row_h + DAY_NUM_Y;
-            c.begin_text();
-            c.set_font(font_name, DAY_SIZE);
-            c.next_line(x, y);
-            c.show(Str(date.day().to_string().as_bytes()));
-            c.end_text();
+            let x_position = calendar_left + column as f32 * column_width + DAY_NUMBER_INSET_X;
+            let y_position =
+                grid_top - row as f32 * row_height - row_height + DAY_NUMBER_BASELINE_LIFT;
+            content.begin_text();
+            content.set_font(font_name, DAY_NUMBER_FONT_SIZE);
+            content.next_line(x_position, y_position);
+            content.show(Str(date.day().to_string().as_bytes()));
+            content.end_text();
         }
     }
     for label in &sheet.labels {
@@ -142,68 +143,74 @@ fn draw(sheet: &Sheet, font_name: Name) -> Vec<u8> {
         // same row), the box top aligns with the week line; otherwise it
         // starts mid-cell. Symmetrically for the bottom edge.
         let week = &sheet.weeks[label.row];
-        let start_on_line = label.col == 0 || week.days[..label.col].iter().all(|d| d.is_none());
+        let start_on_line =
+            label.column == 0 || week.days[..label.column].iter().all(|day| day.is_none());
         let end_week = &sheet.weeks[label.end_row];
-        let end_on_line = label.end_col == 6
-            || end_week.days[label.end_col + 1..]
+        let end_on_line = label.end_column == 6
+            || end_week.days[label.end_column + 1..]
                 .iter()
-                .all(|d| d.is_none());
+                .all(|day| day.is_none());
 
-        let row_top = grid_top - label.row as f32 * row_h;
-        let top_y = if start_on_line {
+        let row_top = grid_top - label.row as f32 * row_height;
+        let box_top = if start_on_line {
             row_top
         } else {
-            row_top - row_h / 2.0
+            row_top - row_height / 2.0
         };
-        let end_row_top = grid_top - label.end_row as f32 * row_h;
-        let end_row_bottom = end_row_top - row_h;
-        let bottom_y = if end_on_line {
+        let end_row_top = grid_top - label.end_row as f32 * row_height;
+        let end_row_bottom = end_row_top - row_height;
+        let box_bottom = if end_on_line {
             end_row_bottom
         } else {
-            end_row_top - row_h / 2.0
+            end_row_top - row_height / 2.0
         };
 
         // Box: from just right of the grid into the gap.
-        let box_x0 = cal_x1;
-        let box_x1 = cal_x1 + GAP;
+        let box_left = calendar_right;
+        let box_right = calendar_right + GAP;
         // Rotated month name, centered in the box. Rotated glyph "up" is
         // +x, so the horizontal center of the ink is offset from the
         // baseline by (ascent - descent) / 2; for Helvetica that is
         // (0.718 - 0.207) / 2 = 0.256 em below the baseline.
-        let box_mid_x = (box_x0 + box_x1) / 2.0;
-        let baseline_x = box_mid_x - MONTH_SIZE * 0.256;
-        let extent_mid_y = (top_y + bottom_y) / 2.0;
+        let box_center_x = (box_left + box_right) / 2.0;
+        let baseline_x = box_center_x - MONTH_NAME_FONT_SIZE * 0.256;
+        let extent_center_y = (box_top + box_bottom) / 2.0;
         // Vertical text extent of the name (Helvetica ~0.5 em per char).
-        let text_h = label.name.len() as f32 * MONTH_SIZE * 0.5;
-        let box_h = top_y - bottom_y;
+        let text_height = label.name.len() as f32 * MONTH_NAME_FONT_SIZE * 0.5;
+        let box_height = box_top - box_bottom;
         // Symmetric to the first month: if the box has no space for the
         // name, the last month gets no box at all.
-        if text_h > box_h {
+        if text_height > box_height {
             continue;
         }
 
-        c.rect(box_x0, bottom_y, box_x1 - box_x0, top_y - bottom_y);
-        let baseline_y = extent_mid_y + text_h / 2.0;
-        c.begin_text();
-        c.set_font(font_name, MONTH_SIZE);
+        content.rect(
+            box_left,
+            box_bottom,
+            box_right - box_left,
+            box_top - box_bottom,
+        );
+        let baseline_y = extent_center_y + text_height / 2.0;
+        content.begin_text();
+        content.set_font(font_name, MONTH_NAME_FONT_SIZE);
         // Rotate 90° clockwise: text advances in -y, glyph "up" is +x.
-        c.set_text_matrix([0.0, -1.0, 1.0, 0.0, baseline_x, baseline_y]);
-        c.show(Str(label.name.as_bytes()));
-        c.end_text();
+        content.set_text_matrix([0.0, -1.0, 1.0, 0.0, baseline_x, baseline_y]);
+        content.show(Str(label.name.as_bytes()));
+        content.end_text();
     }
-    c.stroke();
+    content.stroke();
 
     // ------------------------------------------------------------------
     // Writing lines, full remaining page height, aligned with calendar rows.
-    c.set_line_width(WRITE_LINE);
+    content.set_line_width(WRITING_LINE_WIDTH);
     for row in 1..=weeks + 1 {
-        let y = top - row as f32 * row_h;
-        c.move_to(wr_x0, y);
-        c.line_to(wr_x1, y);
+        let y_position = top - row as f32 * row_height;
+        content.move_to(writing_left, y_position);
+        content.line_to(writing_right, y_position);
     }
-    c.stroke();
+    content.stroke();
 
-    c.finish().to_vec()
+    content.finish().to_vec()
 }
 
 #[cfg(test)]
@@ -236,7 +243,7 @@ mod tests {
         // month gets no box and no label.
         let sheet = Sheet::new(date(2026, 9, 15), PAGE_FILL_WEEKS);
         assert_eq!(
-            sheet.labels.last().map(|l| l.name),
+            sheet.labels.last().map(|label| label.name),
             Some("February"),
             "precondition: February is the last month on this sheet"
         );

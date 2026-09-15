@@ -7,7 +7,7 @@ use jiff::{
 };
 
 /// Number of days in a week row.
-pub const WEEK_LEN: usize = 7;
+pub const WEEK_LENGTH: usize = 7;
 
 /// One row of the calendar grid: a week, laid out Monday-first.
 ///
@@ -17,16 +17,16 @@ pub const WEEK_LEN: usize = 7;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Week {
     /// Exactly 7 entries, Monday (index 0) ..= Sunday (index 6).
-    pub days: [Option<Date>; WEEK_LEN],
+    pub days: [Option<Date>; WEEK_LENGTH],
 }
 
 impl Week {
     fn of(date: Date) -> Week {
         let offset = date.weekday().to_monday_zero_offset() as i16;
         let monday = date - offset.days();
-        let mut days = [None; WEEK_LEN];
-        for (i, slot) in days.iter_mut().enumerate() {
-            *slot = Some(monday + (i as i16).days());
+        let mut days = [None; WEEK_LENGTH];
+        for (day_offset, slot) in days.iter_mut().enumerate() {
+            *slot = Some(monday + (day_offset as i16).days());
         }
         Week { days }
     }
@@ -39,14 +39,14 @@ pub struct MonthLabel {
     /// Index into `Sheet::weeks` of the week holding the 1st.
     pub row: usize,
     /// Column of the 1st within that week (0 = Monday).
-    pub col: usize,
+    pub column: usize,
     /// Full month name, e.g. "September".
     pub name: &'static str,
     /// Index into `Sheet::weeks` of the week holding the month's last
     /// visible day.
     pub end_row: usize,
     /// Column of the month's last visible day within its week.
-    pub end_col: usize,
+    pub end_column: usize,
 }
 
 /// The full sheet: `weeks` week rows starting at the week containing
@@ -73,8 +73,8 @@ impl Sheet {
             let mut week = Week::of(cursor);
             // Blank out days before the start date in the first week.
             for slot in week.days.iter_mut() {
-                if let Some(d) = *slot {
-                    if d < start {
+                if let Some(date) = *slot {
+                    if date < start {
                         *slot = None;
                     }
                 }
@@ -83,33 +83,36 @@ impl Sheet {
             cursor += 7.days();
         }
 
-        // One label per month whose 1st appears in the grid; each carries
+        // One label per month whose 1st appears in the grid.
         let mut labels = Vec::new();
         for (row, week) in weeks.iter().enumerate() {
-            for (col, day) in week.days.iter().enumerate() {
+            for (column, day) in week.days.iter().enumerate() {
                 let Some(date) = day else { continue };
                 if date.day() != 1 {
                     continue;
                 }
                 // Find the last visible day of the same month.
                 let mut end_row = row;
-                let mut end_col = col;
-                for (r2, w2) in weeks.iter().enumerate().skip(row) {
-                    for (c2, d2) in w2.days.iter().enumerate() {
-                        if let Some(d) = d2 {
-                            if (d.year(), d.month()) == (date.year(), date.month()) {
-                                end_row = r2;
-                                end_col = c2;
+                let mut end_column = column;
+                for (candidate_row, candidate_week) in weeks.iter().enumerate().skip(row) {
+                    for (candidate_column, candidate_day) in candidate_week.days.iter().enumerate()
+                    {
+                        if let Some(candidate_date) = candidate_day {
+                            if (candidate_date.year(), candidate_date.month())
+                                == (date.year(), date.month())
+                            {
+                                end_row = candidate_row;
+                                end_column = candidate_column;
                             }
                         }
                     }
                 }
                 labels.push(MonthLabel {
                     row,
-                    col,
+                    column,
                     name: month_name(date.month()),
                     end_row,
-                    end_col,
+                    end_column,
                 });
             }
         }
@@ -142,7 +145,7 @@ pub fn month_name(month: i8) -> &'static str {
 }
 
 /// Weekday column (0 = Monday) of a date, for tests and layout.
-pub fn weekday_col(date: Date) -> usize {
+pub fn weekday_column(date: Date) -> usize {
     date.weekday().to_monday_zero_offset() as usize
 }
 
@@ -190,10 +193,10 @@ mod tests {
             sheet.labels,
             vec![MonthLabel {
                 row: 2,
-                col: 3,
+                column: 3,
                 name: "October",
                 end_row: 5,
-                end_col: 6,
+                end_column: 6,
             }]
         );
     }
@@ -207,17 +210,17 @@ mod tests {
             vec![
                 MonthLabel {
                     row: 0,
-                    col: 6,
+                    column: 6,
                     name: "November",
                     end_row: 5,
-                    end_col: 0,
+                    end_column: 0,
                 },
                 MonthLabel {
                     row: 5,
-                    col: 1,
+                    column: 1,
                     name: "December",
                     end_row: 5,
-                    end_col: 6,
+                    end_column: 6,
                 },
             ]
         );
@@ -230,10 +233,10 @@ mod tests {
             sheet.labels,
             vec![MonthLabel {
                 row: 0,
-                col: 1,
+                column: 1,
                 name: "September",
                 end_row: 0,
-                end_col: 6,
+                end_column: 6,
             }]
         );
     }
