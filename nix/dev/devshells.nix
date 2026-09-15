@@ -22,14 +22,25 @@
 
         commands = [
           {
-            help = "example command";
-            name = "example";
-            command = "echo 'this is an example command'";
+            help = "run cargo test and auto-accept Insta snapshots";
+            name = "insta-accept";
+            command = "INSTA_UPDATE=always cargo test";
+          }
+          {
+            help = "run Insta interactive review for pending snapshots";
+            name = "insta-review";
+            command = "cargo insta review";
           }
         ];
 
-        packages = [
-          # packages used in commands or in devshell
+        packages = with pkgs; [
+          clang
+          cargo
+          cargo-insta
+          clippy
+          rust-analyzer
+          rustc
+          rustfmt
         ];
       };
     };

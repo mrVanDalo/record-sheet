@@ -1,3 +1,14 @@
 !.envrc
 
 .terraform*
+
+# Rust
+/target
+
+# Nix
+result*
+
+# Jujutsu meta
+.jj/
+
+record-sheet-*.pdf

@@ -1,0 +1,16 @@
+[package]
+name = "record-sheet"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+jiff = "0.2.37"
+pdf-writer = "0.15"
+thiserror = "2"
+
+[dev-dependencies]
+insta = { version = "1", features = ["yaml"] }
+assert_cmd = "2"
+assert_fs = "1.1.4"

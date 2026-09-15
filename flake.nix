@@ -49,20 +49,25 @@
 
       perSystem =
         {
-          config,
-          self',
-          inputs',
           pkgs,
-          system,
           ...
         }:
+        let
+          rustPlatform = pkgs.rustPlatform;
+          record-sheet = rustPlatform.buildRustPackage {
+            pname = "record-sheet";
+            version = "0.1.0";
+            src = pkgs.lib.cleanSource ./.;
+            cargoLock.lockFile = ./Cargo.lock;
+            doCheck = true;
+          };
+        in
         {
-          # Per-system attributes can be defined here. The self' and inputs'
-          # module parameters provide easy access to attributes of the same
-          # system.
-
-          # Equivalent to  inputs'.nixpkgs.legacyPackages.hello;
-          packages.default = pkgs.hello;
+          packages = {
+            inherit record-sheet;
+            default = record-sheet;
+          };
+          checks.record-sheet = record-sheet;
         };
       flake = {
         # The usual flake attributes can be defined here, including system-
