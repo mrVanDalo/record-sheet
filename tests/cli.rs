@@ -39,6 +39,32 @@ fn cli_with_date_argument() {
 }
 
 #[test]
+fn cli_language_flag_changes_month_names() {
+    let mut command = Command::cargo_bin("record-sheet").unwrap();
+    let temp_dir = assert_fs::TempDir::new().unwrap();
+    command.current_dir(&temp_dir);
+    let output = command
+        .args(["2026-09-15", "-o", "de.pdf", "--language", "de"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let bytes = std::fs::read(temp_dir.join("de.pdf")).unwrap();
+    let text = String::from_utf8_lossy(&bytes).into_owned();
+    // September spans enough cells for its full German name.
+    assert!(text.contains("September"));
+    assert!(text.contains("Oktober"));
+}
+
+#[test]
+fn cli_rejects_unknown_language() {
+    let mut command = Command::cargo_bin("record-sheet").unwrap();
+    let output = command.args(["--language", "fr"]).output().unwrap();
+    assert!(!output.status.success());
+    let stderr = std::str::from_utf8(&output.stderr).unwrap();
+    assert!(stderr.contains("invalid value"), "stderr: {stderr}");
+}
+
+#[test]
 fn cli_rejects_invalid_date() {
     let mut command = Command::cargo_bin("record-sheet").unwrap();
     let temp_dir = assert_fs::TempDir::new().unwrap();

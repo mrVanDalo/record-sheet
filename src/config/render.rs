@@ -75,9 +75,20 @@ impl Default for RenderConfig {
     /// A4 portrait.
     fn default() -> Self {
         Self {
-            page: PageConfig { width: 595.0, height: 842.0, margin: 40.0 },
-            week_cells: WeekCellConfig { width: 24.0, height: 24.0, font_size: 10.0 },
-            month_cells: MonthCellConfig { width: 20.0, font_size: 9.0 },
+            page: PageConfig {
+                width: 595.0,
+                height: 842.0,
+                margin: 40.0,
+            },
+            week_cells: WeekCellConfig {
+                width: 24.0,
+                height: 24.0,
+                font_size: 10.0,
+            },
+            month_cells: MonthCellConfig {
+                width: 20.0,
+                font_size: 9.0,
+            },
         }
     }
 }

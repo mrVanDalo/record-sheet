@@ -26,12 +26,30 @@ pub fn render_pdf(sheet: &Sheet, config: &RenderConfig) -> Vec<u8> {
     page.resources().fonts().pair(font_name, font_id);
     page.finish();
 
-    pdf.type1_font(font_id).base_font(Name(b"Helvetica"));
+    pdf.type1_font(font_id)
+        .base_font(Name(b"Helvetica"))
+        .encoding_predefined(Name(b"WinAnsiEncoding"));
 
     let content = draw(sheet, config, font_name);
     pdf.stream(content_id, &content);
 
     pdf.finish()
+}
+
+/// Encode `text` as single-byte WinAnsi (CP1252) codes for the standard
+/// Helvetica font. Characters in the Latin-1 range (where CP1252 and
+/// Latin-1 agree, and where every generated label lives) map to their
+/// code point; anything else falls back to `?`.
+fn winansi_bytes(text: &str) -> Vec<u8> {
+    text.chars()
+        .map(|character| {
+            if (character as u32) < 0x100 {
+                character as u8
+            } else {
+                b'?'
+            }
+        })
+        .collect()
 }
 
 fn draw(sheet: &Sheet, config: &RenderConfig, font_name: Name) -> Vec<u8> {
@@ -84,17 +102,13 @@ fn draw(sheet: &Sheet, config: &RenderConfig, font_name: Name) -> Vec<u8> {
         match row {
             Row::WeekHeader(header) => {
                 for (column, label) in header.labels.iter().enumerate() {
-                    let x_position = calendar_left
-                        + column as f32 * column_width
-                        + column_width / 2.0
-                        - config.week_cells.font_size * 0.8;
+                    let x_position =
+                        calendar_left + column as f32 * column_width + column_width / 2.0
+                            - config.week_cells.font_size * 0.8;
                     content.begin_text();
                     content.set_font(font_name, config.week_cells.font_size);
-                    content.next_line(
-                        x_position,
-                        row_bottom + config.week_cells.font_size * 0.6,
-                    );
-                    content.show(Str(label.as_bytes()));
+                    content.next_line(x_position, row_bottom + config.week_cells.font_size * 0.6);
+                    content.show(Str(&winansi_bytes(label)));
                     content.end_text();
                 }
             }
@@ -106,9 +120,8 @@ fn draw(sheet: &Sheet, config: &RenderConfig, font_name: Name) -> Vec<u8> {
                         + config.week_cells.font_size * 0.4;
                     let y_position = row_bottom + config.week_cells.font_size * 0.6;
                     content.begin_text();
-                    content.set_font(font_name, config.week_cells.font_size);
                     content.next_line(x_position, y_position);
-                    content.show(Str(date.day().to_string().as_bytes()));
+                    content.show(Str(&winansi_bytes(&date.day().to_string())));
                     content.end_text();
                 }
             }
@@ -187,9 +200,9 @@ fn draw(sheet: &Sheet, config: &RenderConfig, font_name: Name) -> Vec<u8> {
         let box_height = box_top - box_bottom;
         // Symmetric to the first month: if the box has no space for any
         // variant of the name, the last month gets no box at all.
-        if name.is_some_and(|name| {
-            name.len() as f32 * config.month_cells.font_size * 0.5 > box_height
-        }) {
+        if name
+            .is_some_and(|name| name.len() as f32 * config.month_cells.font_size * 0.5 > box_height)
+        {
             continue;
         }
 
@@ -205,7 +218,7 @@ fn draw(sheet: &Sheet, config: &RenderConfig, font_name: Name) -> Vec<u8> {
             content.set_font(font_name, config.month_cells.font_size);
             // Rotate 90° clockwise: text advances in -y, glyph "up" is +x.
             content.set_text_matrix([0.0, -1.0, 1.0, 0.0, baseline_x, baseline_y]);
-            content.show(Str(name.as_bytes()));
+            content.show(Str(&winansi_bytes(name)));
             content.end_text();
         }
     }
@@ -228,13 +241,17 @@ fn draw(sheet: &Sheet, config: &RenderConfig, font_name: Name) -> Vec<u8> {
 mod tests {
     use super::*;
     use crate::config::render::PageConfig;
+    use crate::models::sheet::Language;
     use jiff::civil::date;
-
 
     #[test]
     fn renders_nonempty_pdf() {
         let config = RenderConfig::default();
-        let sheet = Sheet::new(date(2026, 9, 15), config.page_fill_weeks());
+        let sheet = Sheet::new(
+            date(2026, 9, 15),
+            config.page_fill_weeks(),
+            Language::English,
+        );
         let pdf = render_pdf(&sheet, &config);
         assert!(pdf.starts_with(b"%PDF-"));
         assert!(pdf.len() > 1000);
@@ -243,7 +260,11 @@ mod tests {
     #[test]
     fn month_names_present_when_box_fits() {
         let config = RenderConfig::default();
-        let sheet = Sheet::new(date(2026, 9, 15), config.page_fill_weeks());
+        let sheet = Sheet::new(
+            date(2026, 9, 15),
+            config.page_fill_weeks(),
+            Language::English,
+        );
         let pdf = render_pdf(&sheet, &config);
         let text = String::from_utf8_lossy(&pdf).into_owned();
         assert!(text.contains("October"));
@@ -257,7 +278,11 @@ mod tests {
         // fit the one-week box (~24.6pt), so the month gets no box and
         // no label.
         let config = RenderConfig::default();
-        let sheet = Sheet::new(date(2026, 7, 19), config.page_fill_weeks());
+        let sheet = Sheet::new(
+            date(2026, 7, 19),
+            config.page_fill_weeks(),
+            Language::English,
+        );
         assert_eq!(
             sheet.groups.last().map(|group| group.kind),
             Some(RowGroupKind::Month(1)),
@@ -283,7 +308,11 @@ mod tests {
         // Sunday Apr 11 on the grid edge). The 2-cell variant applies
         // (1.5 > 1), the full name does not (1.5 > 2 is false).
         let config = RenderConfig::default();
-        let sheet = Sheet::new(date(2026, 9, 15), config.page_fill_weeks());
+        let sheet = Sheet::new(
+            date(2026, 9, 15),
+            config.page_fill_weeks(),
+            Language::English,
+        );
         let group = sheet
             .groups
             .last()
@@ -302,7 +331,11 @@ mod tests {
         // The virtual first month (September, 1st before the grid) gets
         // a box clamped to the grid's top edge; its label must render.
         let config = RenderConfig::default();
-        let sheet = Sheet::new(date(2026, 9, 15), config.page_fill_weeks());
+        let sheet = Sheet::new(
+            date(2026, 9, 15),
+            config.page_fill_weeks(),
+            Language::English,
+        );
         let pdf = render_pdf(&sheet, &config);
         let text = String::from_utf8_lossy(&pdf).into_owned();
         assert!(text.contains("September"));
@@ -312,13 +345,40 @@ mod tests {
     fn renders_with_custom_page_config() {
         // US Letter instead of A4: the media box must reflect the config.
         let config = RenderConfig {
-            page: PageConfig { width: 612.0, height: 792.0, margin: 36.0 },
+            page: PageConfig {
+                width: 612.0,
+                height: 792.0,
+                margin: 36.0,
+            },
             ..RenderConfig::default()
         };
-        let sheet = Sheet::new(date(2026, 9, 15), config.page_fill_weeks());
+        let sheet = Sheet::new(
+            date(2026, 9, 15),
+            config.page_fill_weeks(),
+            Language::English,
+        );
         let pdf = render_pdf(&sheet, &config);
         let text = String::from_utf8_lossy(&pdf).into_owned();
         assert!(pdf.starts_with(b"%PDF-"));
         assert!(text.contains("612 792"));
+    }
+
+    #[test]
+    fn german_month_names_use_winansi_encoding() {
+        // "März" must appear with the WinAnsi (0xE4) encoding of "ä",
+        // not raw UTF-8 bytes, and the font must declare WinAnsiEncoding.
+        let config = RenderConfig::default();
+        let sheet = Sheet::new(
+            date(2026, 2, 15),
+            config.page_fill_weeks(),
+            Language::German,
+        );
+        let pdf = render_pdf(&sheet, &config);
+        let text = String::from_utf8_lossy(&pdf).into_owned();
+        assert!(text.contains("WinAnsiEncoding"));
+        // "März" renders with the WinAnsi code 0xE4 for "ä" (hex string
+        // `4DE4727A` in the content stream), never raw UTF-8 `C3A4`.
+        assert!(text.contains("<4DE4727A>"));
+        assert!(!pdf.windows(4).any(|window| window == b"M\xc3\xa4"));
     }
 }

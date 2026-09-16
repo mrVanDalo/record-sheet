@@ -72,6 +72,28 @@ pub enum Row {
     WeekHeader(WeekHeader),
 }
 
+/// The language of all generated text: weekday headings and month
+/// names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Language {
+    #[default]
+    English,
+    German,
+    Spanish,
+}
+
+impl Language {
+    /// The weekday abbreviations for this language, Monday (index 0)
+    /// ..= Sunday (index 6).
+    pub fn weekday_labels(&self) -> [&'static str; WEEK_LENGTH] {
+        match self {
+            Language::English => ["Mo", "Tu", "We", "Th", "Fr", "Sa", "So"],
+            Language::German => ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"],
+            Language::Spanish => ["Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do"],
+        }
+    }
+}
+
 /// Weekday column headings for the grid's first row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WeekHeader {
@@ -80,9 +102,18 @@ pub struct WeekHeader {
     pub labels: [&'static str; WEEK_LENGTH],
 }
 
+impl WeekHeader {
+    /// The weekday headings for `language`.
+    pub fn for_language(language: Language) -> WeekHeader {
+        WeekHeader {
+            labels: language.weekday_labels(),
+        }
+    }
+}
+
 impl Default for WeekHeader {
     fn default() -> Self {
-        Self { labels: ["Mo", "Tu", "We", "Th", "Fr", "Sa", "So"] }
+        WeekHeader::for_language(Language::default())
     }
 }
 
@@ -108,15 +139,18 @@ pub struct Sheet {
 
 impl Sheet {
     /// Build a sheet of `week_count` week rows starting at the week that
-    /// contains `start`.
-    pub fn new(start: Date, week_count: usize) -> Sheet {
+    /// contains `start`, with weekday headings and month names in
+    /// `language`.
+    pub fn new(start: Date, week_count: usize, language: Language) -> Sheet {
         let mut sheet = Sheet {
             start,
             rows: Vec::with_capacity(week_count + 1),
             groups: Vec::new(),
-            year: Year::default(),
+            year: Year::for_language(language),
         };
-        sheet.rows.push(Row::WeekHeader(WeekHeader::default()));
+        sheet
+            .rows
+            .push(Row::WeekHeader(WeekHeader::for_language(language)));
         sheet.append_weeks(week_count);
         sheet
     }
@@ -131,8 +165,7 @@ impl Sheet {
     /// before `start` stay blank; month groups are kept in sync.
     pub fn append_week(&mut self) {
         let row = self.rows.len();
-        let monday =
-            monday_of(self.start) + (((row - 1) * WEEK_LENGTH) as i16).days();
+        let monday = monday_of(self.start) + (((row - 1) * WEEK_LENGTH) as i16).days();
         let mut week = Week::of(monday);
         // Blank out days before the start date in the first week.
         for slot in week.days.iter_mut() {
@@ -152,10 +185,11 @@ impl Sheet {
             let Row::Week(week) = row_kind else { continue };
             for (column, day) in week.days.iter().enumerate() {
                 if let Some(candidate) = day {
-                    if (candidate.year(), candidate.month())
-                        == (date.year(), date.month())
-                    {
-                        end = Some(Position { row: row as isize, column });
+                    if (candidate.year(), candidate.month()) == (date.year(), date.month()) {
+                        end = Some(Position {
+                            row: row as isize,
+                            column,
+                        });
                     }
                 }
             }
@@ -175,8 +209,7 @@ impl Sheet {
         // earlier weeks go negative.
         let first = self.start.first_of_month();
         if first < self.start {
-            let weeks_back =
-                (monday_of(self.start) - monday_of(first)).get_days() as isize / 7;
+            let weeks_back = (monday_of(self.start) - monday_of(first)).get_days() as isize / 7;
             if let Some(end) = self.last_visible_in_month(first) {
                 self.groups.push(RowGroup {
                     kind: RowGroupKind::Month(first.month() - 1),
@@ -197,7 +230,10 @@ impl Sheet {
                 }
                 self.groups.push(RowGroup {
                     kind: RowGroupKind::Month(date.month() - 1),
-                    start: Position { row: row as isize, column },
+                    start: Position {
+                        row: row as isize,
+                        column,
+                    },
                     // Always `Some`: the 1st itself is visible.
                     end: self
                         .last_visible_in_month(*date)
@@ -247,32 +283,62 @@ pub struct Year {
 }
 
 impl Year {
-    /// English month names: no text for a single cell, the short name
-    /// from two cells, the full name from three.
-    pub fn english() -> Year {
-        const ENGLISH: [&[(u8, &str)]; 12] = [
-            &[(1, "Jan"), (2, "January")],
-            &[(1, "Feb"), (2, "February")],
-            &[(1, "Mar"), (2, "March")],
-            &[(1, "Apr"), (2, "April")],
-            &[(1, "May")],
-            &[(1, "Jun"), (2, "June")],
-            &[(1, "Jul"), (2, "July")],
-            &[(1, "Aug"), (2, "August")],
-            &[(1, "Sep"), (2, "September")],
-            &[(1, "Oct"), (2, "October")],
-            &[(1, "Nov"), (2, "November")],
-            &[(1, "Dec"), (2, "December")],
-        ];
+    /// The month names for `language`: no text for a single cell, the
+    /// short name from two cells, the full name from three.
+    pub fn for_language(language: Language) -> Year {
+        let names: [&[(u8, &str)]; 12] = match language {
+            Language::English => [
+                &[(1, "Jan"), (2, "January")],
+                &[(1, "Feb"), (2, "February")],
+                &[(1, "Mar"), (2, "March")],
+                &[(1, "Apr"), (2, "April")],
+                &[(1, "May")],
+                &[(1, "Jun"), (2, "June")],
+                &[(1, "Jul"), (2, "July")],
+                &[(1, "Aug"), (2, "August")],
+                &[(1, "Sep"), (2, "September")],
+                &[(1, "Oct"), (2, "October")],
+                &[(1, "Nov"), (2, "November")],
+                &[(1, "Dec"), (2, "December")],
+            ],
+            Language::German => [
+                &[(1, "Jan"), (2, "Januar")],
+                &[(1, "Feb"), (2, "Februar")],
+                &[(1, "Mär"), (2, "März")],
+                &[(1, "Apr"), (2, "April")],
+                &[(1, "Mai")],
+                &[(1, "Jun"), (2, "Juni")],
+                &[(1, "Jul"), (2, "Juli")],
+                &[(1, "Aug"), (2, "August")],
+                &[(1, "Sep"), (2, "September")],
+                &[(1, "Okt"), (2, "Oktober")],
+                &[(1, "Nov"), (2, "November")],
+                &[(1, "Dez"), (2, "Dezember")],
+            ],
+            Language::Spanish => [
+                &[(1, "Ene"), (2, "Enero")],
+                &[(1, "Feb"), (2, "Febrero")],
+                &[(1, "Mar"), (2, "Marzo")],
+                &[(1, "Abr"), (2, "Abril")],
+                &[(1, "May")],
+                &[(1, "Jun"), (2, "Junio")],
+                &[(1, "Jul"), (2, "Julio")],
+                &[(1, "Ago"), (2, "Agosto")],
+                &[(1, "Sep"), (2, "Septiembre")],
+                &[(1, "Oct"), (2, "Octubre")],
+                &[(1, "Nov"), (2, "Noviembre")],
+                &[(1, "Dic"), (2, "Diciembre")],
+            ],
+        };
         Year {
-            months: ENGLISH.iter().map(|names| Month::new(names)).collect(),
+            months: names.iter().map(|names| Month::new(names)).collect(),
         }
     }
 }
 
 impl Default for Year {
     fn default() -> Self {
-        Year::english()
+        Year::for_language(Language::default())
     }
 }
 
@@ -307,7 +373,7 @@ mod tests {
     #[test]
     fn weeks_start_at_given_date_midweek() {
         // 2026-09-15 is a Tuesday.
-        let sheet = Sheet::new(date(2026, 9, 15), 1);
+        let sheet = Sheet::new(date(2026, 9, 15), 1, Language::English);
         assert_eq!(sheet.rows.len(), 2);
         let week = &week(&sheet, 1).days;
         // Monday 2026-09-14 is before the start -> blank.
@@ -319,7 +385,7 @@ mod tests {
     #[test]
     fn weeks_run_across_month_boundary_to_fill_page() {
         // 2026-09-15 + 6 weeks crosses into October.
-        let sheet = Sheet::new(date(2026, 9, 15), 6);
+        let sheet = Sheet::new(date(2026, 9, 15), 6, Language::English);
         assert_eq!(sheet.rows.len(), 7);
         assert_eq!(week(&sheet, 6).days[6], Some(date(2026, 10, 25)));
     }
@@ -327,7 +393,7 @@ mod tests {
     #[test]
     fn label_on_first_of_month() {
         // 2026-10-01 is a Thursday.
-        let sheet = Sheet::new(date(2026, 9, 15), 6);
+        let sheet = Sheet::new(date(2026, 9, 15), 6, Language::English);
         assert_eq!(
             sheet.groups,
             vec![
@@ -348,7 +414,7 @@ mod tests {
     fn every_first_of_month_gets_a_label_regardless_of_weekday() {
         // 2026-11-01 is a Sunday; the rotated margin label has no width
         // constraint, so November is labelled too.
-        let sheet = Sheet::new(date(2026, 10, 30), 6);
+        let sheet = Sheet::new(date(2026, 10, 30), 6, Language::English);
         assert_eq!(
             sheet.groups,
             vec![
@@ -373,7 +439,7 @@ mod tests {
     #[test]
     fn start_on_first_of_month_gets_label() {
         // 2026-09-01 is a Tuesday.
-        let sheet = Sheet::new(date(2026, 9, 1), 1);
+        let sheet = Sheet::new(date(2026, 9, 1), 1, Language::English);
         assert_eq!(
             sheet.groups,
             vec![RowGroup {
@@ -386,7 +452,7 @@ mod tests {
     #[test]
     fn append_week_extends_grid() {
         // 2026-09-15 is a Tuesday; 3 appended weeks continue the grid.
-        let mut sheet = Sheet::new(date(2026, 9, 15), 1);
+        let mut sheet = Sheet::new(date(2026, 9, 15), 1, Language::English);
         sheet.append_week();
         sheet.append_week();
         sheet.append_week();
@@ -400,9 +466,12 @@ mod tests {
 
     #[test]
     fn append_weeks_matches_sheet_new() {
-        let mut appended = Sheet::new(date(2026, 9, 15), 1);
+        let mut appended = Sheet::new(date(2026, 9, 15), 1, Language::English);
         appended.append_weeks(5);
-        assert_eq!(appended, Sheet::new(date(2026, 9, 15), 6));
+        assert_eq!(
+            appended,
+            Sheet::new(date(2026, 9, 15), 6, Language::English)
+        );
     }
     #[test]
     fn append_week_updates_labels() {
@@ -410,7 +479,7 @@ mod tests {
         // from the start (anchored before the grid) and its end grows
         // with the grid; appending weeks crosses into October, whose
         // 1st (Thursday) gains a label ending at the grid's edge.
-        let mut sheet = Sheet::new(date(2026, 9, 15), 1);
+        let mut sheet = Sheet::new(date(2026, 9, 15), 1, Language::English);
         // Only September's virtual group; it ends at the grid edge
         // (2026-09-20, Sunday of row 1).
         assert_eq!(
@@ -454,7 +523,7 @@ mod tests {
     fn append_weeks_keeps_month_label_end_open() {
         // 2026-10-01 mid-sheet: appending weeks must move October's
         // end_row forward.
-        let mut sheet = Sheet::new(date(2026, 9, 1), 2);
+        let mut sheet = Sheet::new(date(2026, 9, 1), 2, Language::English);
         let before = sheet.groups[0].end.row;
         sheet.append_weeks(3);
         let group = sheet
@@ -468,12 +537,46 @@ mod tests {
 
     #[test]
     fn weekday_header_comes_from_model() {
-        let sheet = Sheet::new(date(2026, 9, 15), 1);
+        let sheet = Sheet::new(date(2026, 9, 15), 1, Language::English);
         assert_eq!(
             sheet.rows[0],
-            Row::WeekHeader(WeekHeader::default()),
+            Row::WeekHeader(WeekHeader::for_language(Language::English)),
             "row 0 is the weekday-abbreviation header"
         );
+    }
+
+    #[test]
+    fn weekday_header_follows_language() {
+        assert_eq!(
+            WeekHeader::for_language(Language::German).labels,
+            ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+        );
+        assert_eq!(
+            WeekHeader::for_language(Language::Spanish).labels,
+            ["Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do"]
+        );
+    }
+
+    #[test]
+    fn month_names_follow_language() {
+        let german = Year::for_language(Language::German);
+        assert_eq!(german.months[2].name(2.0), Some("Mär"));
+        assert_eq!(german.months[2].name(3.0), Some("März"));
+        assert_eq!(german.months[9].name(3.0), Some("Oktober"));
+        let spanish = Year::for_language(Language::Spanish);
+        assert_eq!(spanish.months[0].name(2.0), Some("Ene"));
+        assert_eq!(spanish.months[0].name(3.0), Some("Enero"));
+        assert_eq!(spanish.months[4].name(2.0), Some("May"));
+    }
+
+    #[test]
+    fn sheet_carries_language() {
+        let sheet = Sheet::new(date(2026, 9, 15), 1, Language::German);
+        assert_eq!(
+            sheet.rows[0],
+            Row::WeekHeader(WeekHeader::for_language(Language::German))
+        );
+        assert_eq!(sheet.year.months[11].name(3.0), Some("Dezember"));
     }
 
     #[test]
@@ -484,7 +587,7 @@ mod tests {
 
     #[test]
     fn month_name_by_cells() {
-        let january = Year::english().months[0];
+        let january = Year::for_language(Language::English).months[0];
         assert_eq!(january.name(1.0), None);
         assert_eq!(january.name(2.0), Some("Jan"));
         assert_eq!(january.name(3.0), Some("January"));
@@ -518,9 +621,9 @@ mod tests {
         // sheet crossing into October (4 cells, end at grid edge) it
         // still gets its full name; a shorter variant applies only when
         // the span is small.
-        let sheet = Sheet::new(date(2026, 9, 15), 6);
+        let sheet = Sheet::new(date(2026, 9, 15), 6, Language::English);
         assert_eq!(sheet.year.months[9].name(4.0), Some("October"));
-        let mut small = Sheet::new(date(2026, 9, 29), 1);
+        let mut small = Sheet::new(date(2026, 9, 29), 1, Language::English);
         small.append_week();
         // October spans 2026-10-01..=10-04 -> 4 cells.
         assert_eq!(small.year.months[9].name(4.0), Some("October"));
@@ -531,7 +634,7 @@ mod tests {
         // 2026-09-03 is a Thursday; the 1st (Sep 1, Tuesday) sits in a
         // blanked cell of the first week row: a non-negative virtual
         // anchor on that blank cell.
-        let sheet = Sheet::new(date(2026, 9, 3), 1);
+        let sheet = Sheet::new(date(2026, 9, 3), 1, Language::English);
         assert_eq!(
             sheet.groups,
             vec![RowGroup {
@@ -545,7 +648,7 @@ mod tests {
     #[test]
     fn virtual_group_absent_without_week_rows() {
         // No week rows -> no visible days -> no virtual group.
-        let sheet = Sheet::new(date(2026, 9, 15), 0);
+        let sheet = Sheet::new(date(2026, 9, 15), 0, Language::English);
         assert!(sheet.groups.is_empty());
     }
 }
