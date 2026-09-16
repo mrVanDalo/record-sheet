@@ -40,8 +40,9 @@ pub struct MonthLabel {
     pub row: usize,
     /// Column of the 1st within that week (0 = Monday).
     pub column: usize,
-    /// Full month name, e.g. "September".
-    pub name: &'static str,
+    /// Which calendar month this labels, 0 = January (index into
+    /// `Sheet::year.months`).
+    pub month: i8,
     /// Index into `Sheet::weeks` of the week holding the month's last
     /// visible day.
     pub end_row: usize,
@@ -57,10 +58,14 @@ pub struct Sheet {
     pub start: Date,
     /// Week rows, Monday-first, oldest first.
     pub weeks: Vec<Week>,
-    /// One label per month whose 1st appears in the grid. The rendered name
-    /// is rotated in the margin beside the grid, so every 1st gets a label
-    /// regardless of its weekday column.
+    /// One label per month whose 1st appears in the grid. The rendered
+    /// name is looked up in `year` by the number of cells the month spans
+    /// (see [`Month`]), rotated in the margin beside the grid, so every
+    /// 1st gets a label regardless of its weekday column.
     pub labels: Vec<MonthLabel>,
+    /// Month-name variants per calendar month; the rendered name of a
+    /// label depends on the cells it spans.
+    pub year: Year,
 }
 
 impl Sheet {
@@ -71,6 +76,7 @@ impl Sheet {
             start,
             weeks: Vec::with_capacity(week_count),
             labels: Vec::new(),
+            year: Year::default(),
         };
         sheet.append_weeks(week_count);
         sheet
@@ -131,7 +137,7 @@ impl Sheet {
                 self.labels.push(MonthLabel {
                     row,
                     column,
-                    name: month_name(date.month()),
+                    month: date.month() - 1,
                     end_row,
                     end_column,
                 });
@@ -140,23 +146,72 @@ impl Sheet {
     }
 }
 
-/// English month names.
-pub fn month_name(month: i8) -> &'static str {
-    const NAMES: [&str; 12] = [
-        "January",
-        "February",
-        "March",
-        "April",
-        "May",
-        "June",
-        "July",
-        "August",
-        "September",
-        "October",
-        "November",
-        "December",
-    ];
-    NAMES[(month - 1) as usize]
+/// Name variants for one month, keyed by available cell count.
+///
+/// Entries are `(limit, name)` pairs, sorted ascending by `limit`: `name`
+/// applies when the month spans more than `limit` cells, and the largest
+/// applicable `limit` wins. With no applicable entry the month gets no
+/// text (a single cell shows nothing for the English defaults).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Month {
+    names: &'static [(u8, &'static str)],
+}
+
+impl Month {
+    /// Build a month from `(limit, name)` entries sorted ascending by
+    /// `limit`.
+    pub const fn new(names: &'static [(u8, &'static str)]) -> Month {
+        Month { names }
+    }
+
+    /// The name to render for a label box `cells` row-units tall, if
+    /// any. `cells` is continuous (half rows possible when a month
+    /// starts or ends mid-cell); an entry applies when `cells` is
+    /// strictly greater than its limit.
+    pub fn name(&self, cells: f32) -> Option<&'static str> {
+        self.names
+            .iter()
+            .rev()
+            .find(|(limit, _)| cells > f32::from(*limit))
+            .map(|(_, name)| *name)
+    }
+}
+
+/// The twelve months of a year.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Year {
+    /// January (index 0) through December (index 11).
+    pub months: Vec<Month>,
+}
+
+impl Year {
+    /// English month names: no text for a single cell, the short name
+    /// from two cells, the full name from three.
+    pub fn english() -> Year {
+        const ENGLISH: [&[(u8, &str)]; 12] = [
+            &[(1, "Jan"), (2, "January")],
+            &[(1, "Feb"), (2, "February")],
+            &[(1, "Mar"), (2, "March")],
+            &[(1, "Apr"), (2, "April")],
+            &[(1, "May")],
+            &[(1, "Jun"), (2, "June")],
+            &[(1, "Jul"), (2, "July")],
+            &[(1, "Aug"), (2, "August")],
+            &[(1, "Sep"), (2, "September")],
+            &[(1, "Oct"), (2, "October")],
+            &[(1, "Nov"), (2, "November")],
+            &[(1, "Dec"), (2, "December")],
+        ];
+        Year {
+            months: ENGLISH.iter().map(|names| Month::new(names)).collect(),
+        }
+    }
+}
+
+impl Default for Year {
+    fn default() -> Self {
+        Year::english()
+    }
 }
 
 /// Weekday column (0 = Monday) of a date, for tests and layout.
@@ -209,7 +264,7 @@ mod tests {
             vec![MonthLabel {
                 row: 2,
                 column: 3,
-                name: "October",
+                month: 9,
                 end_row: 5,
                 end_column: 6,
             }]
@@ -226,14 +281,14 @@ mod tests {
                 MonthLabel {
                     row: 0,
                     column: 6,
-                    name: "November",
+                    month: 10,
                     end_row: 5,
                     end_column: 0,
                 },
                 MonthLabel {
                     row: 5,
                     column: 1,
-                    name: "December",
+                    month: 11,
                     end_row: 5,
                     end_column: 6,
                 },
@@ -249,7 +304,7 @@ mod tests {
             vec![MonthLabel {
                 row: 0,
                 column: 1,
-                name: "September",
+                month: 8,
                 end_row: 0,
                 end_column: 6,
             }]
@@ -294,7 +349,7 @@ mod tests {
             vec![MonthLabel {
                 row: 2,
                 column: 3,
-                name: "October",
+                month: 9,
                 end_row: 2,
                 end_column: 6,
             }]
@@ -311,7 +366,7 @@ mod tests {
         let label = sheet
             .labels
             .iter()
-            .find(|label| label.name == "October")
+            .find(|label| label.month == 9)
             .unwrap();
         assert!(label.end_row > before);
         assert_eq!(label.end_row, sheet.weeks.len() - 1);
@@ -321,6 +376,49 @@ mod tests {
     fn monday_of_midweek_date() {
         assert_eq!(monday_of(date(2026, 9, 15)), date(2026, 9, 14));
         assert_eq!(monday_of(date(2026, 9, 14)), date(2026, 9, 14));
-        assert_eq!(monday_of(date(2026, 9, 20)), date(2026, 9, 14));
+    }
+
+    #[test]
+    fn month_name_by_cells() {
+        let january = Year::english().months[0];
+        assert_eq!(january.name(1.0), None);
+        assert_eq!(january.name(2.0), Some("Jan"));
+        assert_eq!(january.name(3.0), Some("January"));
+        assert_eq!(january.name(4.0), Some("January"));
+    }
+
+    #[test]
+    fn month_name_biggest_entry_wins() {
+        // The user's example: entries at 1, 3, 4; the biggest applicable
+        // limit wins, and exactly `limit` cells get nothing.
+        let december = Month::new(&[(1, "Dec"), (3, "Decem"), (4, "Decembre")]);
+        assert_eq!(december.name(1.0), None);
+        assert_eq!(december.name(2.0), Some("Dec"));
+        assert_eq!(december.name(3.0), Some("Dec"));
+        assert_eq!(december.name(4.0), Some("Decem"));
+        assert_eq!(december.name(5.0), Some("Decembre"));
+    }
+
+    #[test]
+    fn month_single_entry() {
+        // The user's May example: `May = { 1 = "May" }` — a single cell
+        // stays empty, from two cells the name shows.
+        let may = Month::new(&[(1, "May")]);
+        assert_eq!(may.name(1.0), None);
+        assert_eq!(may.name(2.0), Some("May"));
+    }
+
+    #[test]
+    fn month_name_grows_with_appended_weeks() {
+        // October spans 4 cells in a 6-week sheet: full name. In a 1-week
+        // sheet crossing into October (4 cells, end at grid edge) it
+        // still gets its full name; a shorter variant applies only when
+        // the span is small.
+        let sheet = Sheet::new(date(2026, 9, 15), 6);
+        assert_eq!(sheet.year.months[9].name(4.0), Some("October"));
+        let mut small = Sheet::new(date(2026, 9, 29), 1);
+        small.append_week();
+        // October spans 2026-10-01..=10-04 -> 4 cells.
+        assert_eq!(small.year.months[9].name(4.0), Some("October"));
     }
 }

@@ -4,7 +4,7 @@ pub mod render;
 pub mod sheet;
 
 pub use render::{render_pdf, RenderConfig};
-pub use sheet::Sheet;
+pub use sheet::{Month, Sheet, Year};
 
 use thiserror::Error;
 

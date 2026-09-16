@@ -226,11 +226,24 @@ fn draw(sheet: &Sheet, config: &RenderConfig, font_name: Name) -> Vec<u8> {
         let baseline_x = box_center_x - config.month_cells.font_size * 0.256;
         let extent_center_y = (box_top + box_bottom) / 2.0;
         // Vertical text extent of the name (Helvetica ~0.5 em per char).
-        let text_height = label.name.len() as f32 * config.month_cells.font_size * 0.5;
+        // The label box height in row units (continuous, half rows
+        // possible) decides which name variant applies: the box spans
+        // from the 1st's position to the month's last visible day, so a
+        // month clipped at the grid edge or starting mid-cell gets a box
+        // smaller than its day-cell count would suggest.
+        let box_rows = (box_top - box_bottom) / row_height;
+        // The biggest applicable variant wins; none apply -> no text,
+        // but the box is still drawn (matches the empty-cell months).
+        let name = sheet.year.months[label.month as usize].name(box_rows);
+        let text_height = name.map_or(0.0, |name| {
+            name.len() as f32 * config.month_cells.font_size * 0.5
+        });
         let box_height = box_top - box_bottom;
-        // Symmetric to the first month: if the box has no space for the
-        // name, the last month gets no box at all.
-        if text_height > box_height {
+        // Symmetric to the first month: if the box has no space for any
+        // variant of the name, the last month gets no box at all.
+        if name.is_some_and(|name| {
+            name.len() as f32 * config.month_cells.font_size * 0.5 > box_height
+        }) {
             continue;
         }
 
@@ -241,12 +254,14 @@ fn draw(sheet: &Sheet, config: &RenderConfig, font_name: Name) -> Vec<u8> {
             box_top - box_bottom,
         );
         let baseline_y = extent_center_y + text_height / 2.0;
-        content.begin_text();
-        content.set_font(font_name, config.month_cells.font_size);
-        // Rotate 90° clockwise: text advances in -y, glyph "up" is +x.
-        content.set_text_matrix([0.0, -1.0, 1.0, 0.0, baseline_x, baseline_y]);
-        content.show(Str(label.name.as_bytes()));
-        content.end_text();
+        if let Some(name) = name {
+            content.begin_text();
+            content.set_font(font_name, config.month_cells.font_size);
+            // Rotate 90° clockwise: text advances in -y, glyph "up" is +x.
+            content.set_text_matrix([0.0, -1.0, 1.0, 0.0, baseline_x, baseline_y]);
+            content.show(Str(name.as_bytes()));
+            content.end_text();
+        }
     }
     content.stroke();
 
@@ -296,8 +311,8 @@ mod tests {
         let config = RenderConfig::default();
         let sheet = Sheet::new(date(2026, 7, 19), config.page_fill_weeks());
         assert_eq!(
-            sheet.labels.last().map(|label| label.name),
-            Some("February"),
+            sheet.labels.last().map(|label| label.month),
+            Some(1),
             "precondition: February is the last month on this sheet"
         );
         assert_eq!(
@@ -308,6 +323,25 @@ mod tests {
         let pdf = render_pdf(&sheet, &config);
         let text = String::from_utf8_lossy(&pdf).into_owned();
         assert!(!text.contains("February"));
+    }
+    #[test]
+    fn month_short_name_when_box_is_small() {
+        // The user's report: a page-filling sheet from Tuesday
+        // 2026-09-15 ends Sunday 2027-04-11, clipping April to a label
+        // box of 1.5 row units (1st mid-cell Thursday, last visible day
+        // Sunday Apr 11 on the grid edge). The 2-cell variant applies
+        // (1.5 > 1), the full name does not (1.5 > 2 is false).
+        let config = RenderConfig::default();
+        let sheet = Sheet::new(date(2026, 9, 15), config.page_fill_weeks());
+        let april = sheet
+            .labels
+            .last()
+            .expect("precondition: the sheet ends in April");
+        assert_eq!(april.month, 3);
+        let pdf = render_pdf(&sheet, &config);
+        let text = String::from_utf8_lossy(&pdf).into_owned();
+        assert!(text.contains("Apr"));
+        assert!(!text.contains("April"));
     }
 
     #[test]
