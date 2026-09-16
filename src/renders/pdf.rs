@@ -2,94 +2,9 @@
 //! [`RenderConfig`]), landscape or portrait, with the calendar grid on the
 //! left and ruled writing lines on the right.
 
-use crate::sheet::Sheet;
+use crate::config::render::RenderConfig;
+use crate::models::sheet::{Row, RowGroupKind, Sheet};
 use pdf_writer::{Content, Finish, Name, Pdf, Rect, Ref, Str};
-
-// ---------------------------------------------------------------------------
-// Configuration.
-// ---------------------------------------------------------------------------
-
-/// Page geometry in points (origin bottom-left).
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct PageConfig {
-    /// Page width.
-    pub width: f32,
-    /// Page height.
-    pub height: f32,
-    /// Outer page margin.
-    pub margin: f32,
-}
-
-/// Geometry of the week-row calendar cells.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct WeekCellConfig {
-    /// Cell width; the calendar grid is seven cells across.
-    pub width: f32,
-    /// Nominal cell height; the last row stretches so the grid runs from
-    /// margin to margin.
-    pub height: f32,
-    /// Font size of day numbers and the weekday header.
-    pub font_size: f32,
-}
-
-/// Geometry of the rotated month-name boxes between the calendar and the
-/// writing lines.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct MonthCellConfig {
-    /// Box width.
-    pub width: f32,
-    /// Month name font size.
-    pub font_size: f32,
-}
-
-/// Rendering configuration. All lengths are in points.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct RenderConfig {
-    /// Page geometry: media box and outer margin.
-    pub page: PageConfig,
-    /// Week-row calendar cell geometry: grid cell size and day-number font.
-    pub week_cells: WeekCellConfig,
-    /// Month-name box geometry: box width (also the calendar-to-writing
-    /// gap) and label font size.
-    pub month_cells: MonthCellConfig,
-}
-
-impl RenderConfig {
-    /// Calendar area width: seven week cells across.
-    fn calendar_width(&self) -> f32 {
-        self.week_cells.width * 7.0
-    }
-
-    /// Number of week rows that fill one page (header row + this many week
-    /// rows between the page margins). Sheets built for rendering should
-    /// use this count.
-    pub fn page_fill_weeks(&self) -> usize {
-        ((self.page.height - 2.0 * self.page.margin) / self.week_cells.height - 1.0) as usize
-    }
-
-    /// Calendar table line width: scales with the cell size, 0.7 at the
-    /// A4 default (34 pt cells).
-    fn calendar_line_width(&self) -> f32 {
-        0.7 * self.week_cells.height / 34.0
-    }
-
-    /// Writing line width: scales with the cell size, 0.5 at the A4
-    /// default (34 pt cells).
-    fn writing_line_width(&self) -> f32 {
-        0.5 * self.week_cells.height / 34.0
-    }
-}
-
-impl Default for RenderConfig {
-    /// A4 portrait.
-    fn default() -> Self {
-        Self {
-            page: PageConfig { width: 595.0, height: 842.0, margin: 40.0 },
-            week_cells: WeekCellConfig { width: 24.0, height: 24.0, font_size: 10.0 },
-            month_cells: MonthCellConfig { width: 20.0, font_size: 9.0 },
-        }
-    }
-}
 
 /// Render `sheet` to PDF bytes using `config`.
 pub fn render_pdf(sheet: &Sheet, config: &RenderConfig) -> Vec<u8> {
@@ -122,13 +37,19 @@ pub fn render_pdf(sheet: &Sheet, config: &RenderConfig) -> Vec<u8> {
 fn draw(sheet: &Sheet, config: &RenderConfig, font_name: Name) -> Vec<u8> {
     let mut content = Content::new();
 
-    let weeks = sheet.weeks.len();
-    debug_assert_eq!(weeks, config.page_fill_weeks(), "sheet must fill the page exactly");
+    let row_count = sheet.rows.len();
+    debug_assert_eq!(
+        row_count - 1,
+        config.page_fill_weeks(),
+        "sheet must fill the page exactly"
+    );
     let top = config.page.height - config.page.margin;
     // Stretched row height: header + week rows exactly fill the page.
-    let row_height = (top - config.page.margin) / (weeks as f32 + 1.0);
-    // Grid top starts below the header row.
-    let grid_top = top - row_height;
+    let row_height = (top - config.page.margin) / row_count as f32;
+    // Row 0 is the header; `row_top(i)` is the top edge of row `i`.
+    // Negative indexes are virtual rows before the grid (a month group
+    // anchored before the first week).
+    let row_top = |index: isize| top - index as f32 * row_height;
     // Calendar grid horizontal extents.
     let calendar_left = config.page.margin;
     let calendar_right = calendar_left + config.calendar_width();
@@ -139,25 +60,11 @@ fn draw(sheet: &Sheet, config: &RenderConfig, font_name: Name) -> Vec<u8> {
     let writing_right = config.page.width - config.page.margin;
 
     // ------------------------------------------------------------------
-    // Header row: weekday abbreviations.
-    // ------------------------------------------------------------------
-    let weekday_abbreviations = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "So"];
-    for (column, abbreviation) in weekday_abbreviations.iter().enumerate() {
-        let x_position = calendar_left + column as f32 * column_width + column_width / 2.0
-            - config.week_cells.font_size * 0.8;
-        content.begin_text();
-        content.set_font(font_name, config.week_cells.font_size);
-        content.next_line(x_position, top - row_height + config.week_cells.font_size * 0.6);
-        content.show(Str(abbreviation.as_bytes()));
-        content.end_text();
-    }
-
-    // ------------------------------------------------------------------
     // Calendar grid: horizontal lines.
     // ------------------------------------------------------------------
     content.set_line_width(config.calendar_line_width());
-    for row in 0..=weeks + 1 {
-        let y_position = top - row as f32 * row_height;
+    for row in 0..=row_count {
+        let y_position = row_top(row as isize);
         content.move_to(calendar_left, y_position);
         content.line_to(calendar_right, y_position);
     }
@@ -172,42 +79,80 @@ fn draw(sheet: &Sheet, config: &RenderConfig, font_name: Name) -> Vec<u8> {
     // ------------------------------------------------------------------
     // Day numbers and month names.
     // ------------------------------------------------------------------
-    for (row, week) in sheet.weeks.iter().enumerate() {
-        for (column, day) in week.days.iter().enumerate() {
-            let Some(date) = day else { continue };
-            let x_position = calendar_left + column as f32 * column_width
-                + config.week_cells.font_size * 0.4;
-            let y_position =
-                grid_top - row as f32 * row_height - row_height + config.week_cells.font_size * 0.6;
-            content.begin_text();
-            content.set_font(font_name, config.week_cells.font_size);
-            content.next_line(x_position, y_position);
-            content.show(Str(date.day().to_string().as_bytes()));
-            content.end_text();
+    for (row_index, row) in sheet.rows.iter().enumerate() {
+        let row_bottom = row_top(row_index as isize) - row_height;
+        match row {
+            Row::WeekHeader(header) => {
+                for (column, label) in header.labels.iter().enumerate() {
+                    let x_position = calendar_left
+                        + column as f32 * column_width
+                        + column_width / 2.0
+                        - config.week_cells.font_size * 0.8;
+                    content.begin_text();
+                    content.set_font(font_name, config.week_cells.font_size);
+                    content.next_line(
+                        x_position,
+                        row_bottom + config.week_cells.font_size * 0.6,
+                    );
+                    content.show(Str(label.as_bytes()));
+                    content.end_text();
+                }
+            }
+            Row::Week(week) => {
+                for (column, day) in week.days.iter().enumerate() {
+                    let Some(date) = day else { continue };
+                    let x_position = calendar_left
+                        + column as f32 * column_width
+                        + config.week_cells.font_size * 0.4;
+                    let y_position = row_bottom + config.week_cells.font_size * 0.6;
+                    content.begin_text();
+                    content.set_font(font_name, config.week_cells.font_size);
+                    content.next_line(x_position, y_position);
+                    content.show(Str(date.day().to_string().as_bytes()));
+                    content.end_text();
+                }
+            }
         }
     }
-    for label in &sheet.labels {
+    for label in &sheet.groups {
         // The month box spans vertically from the row holding the 1st to
         // the row holding the month's last visible day. If the 1st is a
         // Monday (or the sheet starts mid-week with no earlier day in the
         // same row), the box top aligns with the week line; otherwise it
-        // starts mid-cell. Symmetrically for the bottom edge.
-        let week = &sheet.weeks[label.row];
-        let start_on_line =
-            label.column == 0 || week.days[..label.column].iter().all(|day| day.is_none());
-        let end_week = &sheet.weeks[label.end_row];
-        let end_on_line = label.end_column == 6
-            || end_week.days[label.end_column + 1..]
+        // starts mid-cell. Symmetrically for the bottom edge. A negative
+        // start row is virtual (before the grid): nothing precedes it, so
+        // the box starts on a line; row 0 is the header band, treated the
+        // same.
+        let start_on_line = match usize::try_from(label.start.row) {
+            Ok(row) => match &sheet.rows[row] {
+                Row::Week(week) => {
+                    label.start.column == 0
+                        || week.days[..label.start.column]
+                            .iter()
+                            .all(|day| day.is_none())
+                }
+                Row::WeekHeader(_) => true,
+            },
+            Err(_) => true,
+        };
+        let Row::Week(end_week) = &sheet.rows[label.end.row as usize] else {
+            continue;
+        };
+        let end_on_line = label.end.column == 6
+            || end_week.days[label.end.column + 1..]
                 .iter()
                 .all(|day| day.is_none());
 
-        let row_top = grid_top - label.row as f32 * row_height;
+        let box_row_top = row_top(label.start.row);
         let box_top = if start_on_line {
-            row_top
+            box_row_top
         } else {
-            row_top - row_height / 2.0
+            box_row_top - row_height / 2.0
         };
-        let end_row_top = grid_top - label.end_row as f32 * row_height;
+        // Virtual groups may start above the grid; clamp to the grid's
+        // top edge so box and rotated label stay on the page.
+        let box_top = box_top.min(top);
+        let end_row_top = row_top(label.end.row);
         let end_row_bottom = end_row_top - row_height;
         let box_bottom = if end_on_line {
             end_row_bottom
@@ -234,7 +179,8 @@ fn draw(sheet: &Sheet, config: &RenderConfig, font_name: Name) -> Vec<u8> {
         let box_rows = (box_top - box_bottom) / row_height;
         // The biggest applicable variant wins; none apply -> no text,
         // but the box is still drawn (matches the empty-cell months).
-        let name = sheet.year.months[label.month as usize].name(box_rows);
+        let RowGroupKind::Month(month) = label.kind;
+        let name = sheet.year.months[month as usize].name(box_rows);
         let text_height = name.map_or(0.0, |name| {
             name.len() as f32 * config.month_cells.font_size * 0.5
         });
@@ -268,8 +214,8 @@ fn draw(sheet: &Sheet, config: &RenderConfig, font_name: Name) -> Vec<u8> {
     // ------------------------------------------------------------------
     // Writing lines, full remaining page height, aligned with calendar rows.
     content.set_line_width(config.writing_line_width());
-    for row in 1..=weeks + 1 {
-        let y_position = top - row as f32 * row_height;
+    for row in 1..=row_count {
+        let y_position = row_top(row as isize);
         content.move_to(writing_left, y_position);
         content.line_to(writing_right, y_position);
     }
@@ -281,7 +227,9 @@ fn draw(sheet: &Sheet, config: &RenderConfig, font_name: Name) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::render::PageConfig;
     use jiff::civil::date;
+
 
     #[test]
     fn renders_nonempty_pdf() {
@@ -311,12 +259,15 @@ mod tests {
         let config = RenderConfig::default();
         let sheet = Sheet::new(date(2026, 7, 19), config.page_fill_weeks());
         assert_eq!(
-            sheet.labels.last().map(|label| label.month),
-            Some(1),
+            sheet.groups.last().map(|group| group.kind),
+            Some(RowGroupKind::Month(1)),
             "precondition: February is the last month on this sheet"
         );
         assert_eq!(
-            sheet.labels.last().map(|label| label.end_row - label.row),
+            sheet
+                .groups
+                .last()
+                .map(|group| group.end.row - group.start.row),
             Some(0),
             "precondition: February spans a single week row"
         );
@@ -333,15 +284,28 @@ mod tests {
         // (1.5 > 1), the full name does not (1.5 > 2 is false).
         let config = RenderConfig::default();
         let sheet = Sheet::new(date(2026, 9, 15), config.page_fill_weeks());
-        let april = sheet
-            .labels
+        let group = sheet
+            .groups
             .last()
             .expect("precondition: the sheet ends in April");
-        assert_eq!(april.month, 3);
+        let RowGroupKind::Month(3) = group.kind else {
+            panic!("precondition: the sheet ends in April");
+        };
         let pdf = render_pdf(&sheet, &config);
         let text = String::from_utf8_lossy(&pdf).into_owned();
         assert!(text.contains("Apr"));
         assert!(!text.contains("April"));
+    }
+
+    #[test]
+    fn first_month_box_clamped_to_grid_top() {
+        // The virtual first month (September, 1st before the grid) gets
+        // a box clamped to the grid's top edge; its label must render.
+        let config = RenderConfig::default();
+        let sheet = Sheet::new(date(2026, 9, 15), config.page_fill_weeks());
+        let pdf = render_pdf(&sheet, &config);
+        let text = String::from_utf8_lossy(&pdf).into_owned();
+        assert!(text.contains("September"));
     }
 
     #[test]

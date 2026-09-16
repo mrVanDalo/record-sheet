@@ -4,57 +4,88 @@ expression: sheet
 ---
 Sheet {
     start: 2026-09-15,
-    weeks: [
-        Week {
-            days: [
-                None,
-                Some(
-                    2026-09-15,
-                ),
-                Some(
-                    2026-09-16,
-                ),
-                Some(
-                    2026-09-17,
-                ),
-                Some(
-                    2026-09-18,
-                ),
-                Some(
-                    2026-09-19,
-                ),
-                Some(
-                    2026-09-20,
-                ),
-            ],
-        },
-        Week {
-            days: [
-                Some(
-                    2026-09-21,
-                ),
-                Some(
-                    2026-09-22,
-                ),
-                Some(
-                    2026-09-23,
-                ),
-                Some(
-                    2026-09-24,
-                ),
-                Some(
-                    2026-09-25,
-                ),
-                Some(
-                    2026-09-26,
-                ),
-                Some(
-                    2026-09-27,
-                ),
-            ],
+    rows: [
+        WeekHeader(
+            WeekHeader {
+                labels: [
+                    "Mo",
+                    "Tu",
+                    "We",
+                    "Th",
+                    "Fr",
+                    "Sa",
+                    "So",
+                ],
+            },
+        ),
+        Week(
+            Week {
+                days: [
+                    None,
+                    Some(
+                        2026-09-15,
+                    ),
+                    Some(
+                        2026-09-16,
+                    ),
+                    Some(
+                        2026-09-17,
+                    ),
+                    Some(
+                        2026-09-18,
+                    ),
+                    Some(
+                        2026-09-19,
+                    ),
+                    Some(
+                        2026-09-20,
+                    ),
+                ],
+            },
+        ),
+        Week(
+            Week {
+                days: [
+                    Some(
+                        2026-09-21,
+                    ),
+                    Some(
+                        2026-09-22,
+                    ),
+                    Some(
+                        2026-09-23,
+                    ),
+                    Some(
+                        2026-09-24,
+                    ),
+                    Some(
+                        2026-09-25,
+                    ),
+                    Some(
+                        2026-09-26,
+                    ),
+                    Some(
+                        2026-09-27,
+                    ),
+                ],
+            },
+        ),
+    ],
+    groups: [
+        RowGroup {
+            kind: Month(
+                8,
+            ),
+            start: Position {
+                row: -1,
+                column: 1,
+            },
+            end: Position {
+                row: 2,
+                column: 6,
+            },
         },
     ],
-    labels: [],
     year: Year {
         months: [
             Month {

@@ -4,32 +4,61 @@ expression: "Sheet::new(date(2026, 9, 15), 1)"
 ---
 Sheet {
     start: 2026-09-15,
-    weeks: [
-        Week {
-            days: [
-                None,
-                Some(
-                    2026-09-15,
-                ),
-                Some(
-                    2026-09-16,
-                ),
-                Some(
-                    2026-09-17,
-                ),
-                Some(
-                    2026-09-18,
-                ),
-                Some(
-                    2026-09-19,
-                ),
-                Some(
-                    2026-09-20,
-                ),
-            ],
+    rows: [
+        WeekHeader(
+            WeekHeader {
+                labels: [
+                    "Mo",
+                    "Tu",
+                    "We",
+                    "Th",
+                    "Fr",
+                    "Sa",
+                    "So",
+                ],
+            },
+        ),
+        Week(
+            Week {
+                days: [
+                    None,
+                    Some(
+                        2026-09-15,
+                    ),
+                    Some(
+                        2026-09-16,
+                    ),
+                    Some(
+                        2026-09-17,
+                    ),
+                    Some(
+                        2026-09-18,
+                    ),
+                    Some(
+                        2026-09-19,
+                    ),
+                    Some(
+                        2026-09-20,
+                    ),
+                ],
+            },
+        ),
+    ],
+    groups: [
+        RowGroup {
+            kind: Month(
+                8,
+            ),
+            start: Position {
+                row: -1,
+                column: 1,
+            },
+            end: Position {
+                row: 1,
+                column: 6,
+            },
         },
     ],
-    labels: [],
     year: Year {
         months: [
             Month {

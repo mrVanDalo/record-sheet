@@ -1,7 +1,7 @@
 //! Snapshot tests for the `Sheet` model: construction and incremental
 //! `append_week`/`append_weeks` growth.
 //!
-//! Snapshots capture the full `Sheet` (weeks grid plus month labels).
+//! Snapshots capture the full `Sheet` (row grid plus row groups).
 //! After intentional model changes, review with `cargo insta review`
 //! (or `cargo insta accept`).
 

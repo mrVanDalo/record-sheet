@@ -1,10 +1,14 @@
 //! record-sheet: printable calendar record sheet PDF generator.
 
-pub mod render;
-pub mod sheet;
+pub mod config;
+pub mod renders;
+pub mod models;
 
-pub use render::{render_pdf, RenderConfig};
-pub use sheet::{Month, Sheet, Year};
+pub use config::render::{MonthCellConfig, PageConfig, RenderConfig, WeekCellConfig};
+pub use renders::pdf::render_pdf;
+pub use models::sheet::{
+    Month, Position, Row, RowGroup, RowGroupKind, Sheet, Week, WeekHeader, Year,
+};
 
 use thiserror::Error;
 
