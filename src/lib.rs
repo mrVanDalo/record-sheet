@@ -4,7 +4,7 @@ pub mod config;
 pub mod models;
 pub mod renders;
 
-pub use config::render::{MonthCellConfig, PageConfig, RenderConfig, WeekCellConfig};
+pub use config::render::{MonthCellConfig, PageConfig, RenderConfig, TitleConfig, WeekCellConfig};
 pub use models::sheet::{
     Language, Month, Position, Row, RowGroup, RowGroupKind, Sheet, Week, WeekHeader, Year,
 };

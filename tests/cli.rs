@@ -84,3 +84,35 @@ fn cli_help_mentions_date() {
     assert!(stdout.contains("date"));
     assert!(stdout.contains("output"));
 }
+
+#[test]
+fn cli_title_argument_writes_pdf() {
+    let mut command = Command::cargo_bin("record-sheet").unwrap();
+    let temp_dir = assert_fs::TempDir::new().unwrap();
+    command.current_dir(&temp_dir);
+    let output = command
+        .args(["2026-09-15", "-o", "title.pdf", "--title", "Week 38"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let bytes = std::fs::read(temp_dir.join("title.pdf")).unwrap();
+    assert!(bytes.starts_with(b"%PDF-"));
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(text.contains("Week 38"));
+}
+
+#[test]
+fn cli_no_title_keeps_default_layout() {
+    let mut command = Command::cargo_bin("record-sheet").unwrap();
+    let temp_dir = assert_fs::TempDir::new().unwrap();
+    command.current_dir(&temp_dir);
+    let output = command
+        .args(["2026-09-15", "-o", "default.pdf"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = std::str::from_utf8(&output.stdout).unwrap();
+    assert!(stdout.contains("Wrote"));
+    let bytes = std::fs::read(temp_dir.join("default.pdf")).unwrap();
+    assert!(bytes.starts_with(b"%PDF-"));
+}

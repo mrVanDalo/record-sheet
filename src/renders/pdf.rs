@@ -61,7 +61,9 @@ fn draw(sheet: &Sheet, config: &RenderConfig, font_name: Name) -> Vec<u8> {
         config.page_fill_weeks(),
         "sheet must fill the page exactly"
     );
-    let top = config.page.height - config.page.margin;
+    let title = config.title.as_ref();
+    let title_height = title.map_or(0.0, |t| t.height);
+    let top = config.page.height - config.page.margin - title_height;
     // Stretched row height: header + week rows exactly fill the page.
     let row_height = (top - config.page.margin) / row_count as f32;
     // Row 0 is the header; `row_top(i)` is the top edge of row `i`.
@@ -76,6 +78,26 @@ fn draw(sheet: &Sheet, config: &RenderConfig, font_name: Name) -> Vec<u8> {
     // Writing area horizontal extents.
     let writing_left = calendar_right + config.month_cells.width;
     let writing_right = config.page.width - config.page.margin;
+
+    // ------------------------------------------------------------------
+    // Optional title band.
+    // ------------------------------------------------------------------
+    if let Some(t) = title {
+        let band_top = config.page.height - config.page.margin;
+        // Cap top of the title sits exactly on the grid's top edge: the
+        // same distance from the paper top as the grid gets without a
+        // title (one page margin). Baseline = cap top minus the 0.718 em
+        // Helvetica cap/ascent height.
+        let content_width = config.page.width - 2.0 * config.page.margin;
+        let est_text_width = t.text.len() as f32 * t.font_size * 0.5;
+        let x = config.page.margin + (content_width - est_text_width) / 2.0;
+        let baseline_y = band_top - t.font_size * 0.718;
+        content.begin_text();
+        content.set_font(font_name, t.font_size);
+        content.next_line(x, baseline_y);
+        content.show(Str(&winansi_bytes(&t.text)));
+        content.end_text();
+    }
 
     // ------------------------------------------------------------------
     // Calendar grid: horizontal lines.
@@ -240,7 +262,7 @@ fn draw(sheet: &Sheet, config: &RenderConfig, font_name: Name) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::render::PageConfig;
+    use crate::config::render::{PageConfig, TitleConfig};
     use crate::models::sheet::Language;
     use jiff::civil::date;
 
@@ -380,5 +402,42 @@ mod tests {
         // `4DE4727A` in the content stream), never raw UTF-8 `C3A4`.
         assert!(text.contains("<4DE4727A>"));
         assert!(!pdf.windows(4).any(|window| window == b"M\xc3\xa4"));
+    }
+
+    #[test]
+    fn title_drawn_when_set() {
+        let config = RenderConfig {
+            title: Some(TitleConfig {
+                text: "My Calendar".to_string(),
+                height: 36.0,
+                font_size: 16.0,
+            }),
+            ..RenderConfig::default()
+        };
+        let sheet = Sheet::new(
+            date(2026, 9, 15),
+            config.page_fill_weeks(),
+            Language::English,
+        );
+        let pdf = render_pdf(&sheet, &config);
+        let text = String::from_utf8_lossy(&pdf).into_owned();
+        // The content stream is stored uncompressed; "My Calendar" appears
+        // verbatim, like the month-name tests.
+        assert!(text.contains("My Calendar"));
+    }
+
+    #[test]
+    fn title_absent_when_none() {
+        let config = RenderConfig::default();
+        assert!(config.title.is_none());
+        let sheet = Sheet::new(
+            date(2026, 9, 15),
+            config.page_fill_weeks(),
+            Language::English,
+        );
+        let pdf = render_pdf(&sheet, &config);
+        let text = String::from_utf8_lossy(&pdf).into_owned();
+        // No title text should appear.
+        assert!(!text.contains("My Calendar"));
     }
 }

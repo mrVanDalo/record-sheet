@@ -33,8 +33,32 @@ pub struct MonthCellConfig {
     pub font_size: f32,
 }
 
+/// Geometry and font size of the optional title band above the calendar.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TitleConfig {
+    /// The title text, drawn in the band. A `RenderConfig` with a title
+    /// always carries text; use `title: None` for no band at all.
+    pub text: String,
+    /// Height of the title band; the grid shrinks by this amount when a
+    /// title is set.
+    pub height: f32,
+    /// Title font size.
+    pub font_size: f32,
+}
+
+impl Default for TitleConfig {
+    /// Default title band: no text, 36 pt tall, 16 pt font.
+    fn default() -> Self {
+        Self {
+            text: String::new(),
+            height: 36.0,
+            font_size: 16.0,
+        }
+    }
+}
+
 /// Rendering configuration. All lengths are in points.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RenderConfig {
     /// Page geometry: media box and outer margin.
     pub page: PageConfig,
@@ -43,6 +67,8 @@ pub struct RenderConfig {
     /// Month-name box geometry: box width (also the calendar-to-writing
     /// gap) and label font size.
     pub month_cells: MonthCellConfig,
+    /// Optional title band above the calendar grid.
+    pub title: Option<TitleConfig>,
 }
 
 impl RenderConfig {
@@ -51,11 +77,12 @@ impl RenderConfig {
         self.week_cells.width * 7.0
     }
 
-    /// Number of week rows that fill one page (header row + this many week
-    /// rows between the page margins). Sheets built for rendering should
-    /// use this count.
+    /// Number of week rows that fill one page below the optional title band
+    /// (header row + this many week rows between the margins).
     pub fn page_fill_weeks(&self) -> usize {
-        ((self.page.height - 2.0 * self.page.margin) / self.week_cells.height - 1.0) as usize
+        let title_height = self.title.as_ref().map_or(0.0, |t| t.height);
+        ((self.page.height - 2.0 * self.page.margin - title_height) / self.week_cells.height - 1.0)
+            as usize
     }
 
     /// Calendar table line width: scales with the cell size, 0.7 at the
@@ -89,6 +116,7 @@ impl Default for RenderConfig {
                 width: 20.0,
                 font_size: 9.0,
             },
+            title: None,
         }
     }
 }

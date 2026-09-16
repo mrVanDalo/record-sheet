@@ -3,7 +3,7 @@
 
 use clap::{Parser, ValueEnum};
 use jiff::civil::Date;
-use record_sheet::{render_pdf, Language, RenderConfig, Sheet};
+use record_sheet::{render_pdf, Language, RenderConfig, Sheet, TitleConfig};
 use std::path::PathBuf;
 
 /// The `--language` values. A manual [`ValueEnum`] impl keeps the clap
@@ -51,6 +51,10 @@ struct CommandLine {
     /// Language of the weekday headings and month names.
     #[arg(short, long, value_enum, default_value = "en")]
     language: LanguageArg,
+
+    /// Optional title printed above the calendar grid; shortens the grid.
+    #[arg(short, long, value_name = "TEXT")]
+    title: Option<String>,
 }
 
 fn parse_date(input: &str) -> Result<Date, String> {
@@ -65,7 +69,13 @@ fn main() -> anyhow::Result<()> {
         .date
         .unwrap_or_else(|| Date::from(jiff::Zoned::now()));
 
-    let config = RenderConfig::default();
+    let mut config = RenderConfig::default();
+    if let Some(text) = command_line.title.as_deref() {
+        config.title = Some(TitleConfig {
+            text: text.to_owned(),
+            ..TitleConfig::default()
+        });
+    }
     let sheet = Sheet::new(
         start,
         config.page_fill_weeks(),
