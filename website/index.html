@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>record-sheet — printable calendar PDFs</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <h1>record-sheet</h1>
+    <p>Generate a printable calendar record-sheet PDF in your browser.</p>
+    <form id="form">
+      <label for="date">Start date</label>
+      <input type="date" id="date">
+
+      <label for="language">Language</label>
+      <select id="language">
+        <option value="en" selected>English</option>
+        <option value="de">Deutsch</option>
+        <option value="es">Español</option>
+      </select>
+
+      <label for="title">Title <small>(optional)</small></label>
+      <input type="text" id="title" placeholder="e.g. Homework log">
+
+      <button type="submit" id="generate">Generate PDF</button>
+    </form>
+    <div id="status" aria-live="polite"></div>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

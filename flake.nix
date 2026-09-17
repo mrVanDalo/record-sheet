@@ -54,20 +54,114 @@
         }:
         let
           rustPlatform = pkgs.rustPlatform;
+
+          # Shared src filtered to exclude build artifacts (each cargoRoot
+          # manages its own target dir).
+          src = pkgs.lib.cleanSourceWith {
+            src = pkgs.lib.cleanSource ./.;
+            filter =
+              name: type:
+              let
+                base = builtins.baseNameOf (toString name);
+              in
+              !(base == "target" && type == "directory");
+          };
+
           record-sheet = rustPlatform.buildRustPackage {
             pname = "record-sheet";
             version = "0.1.0";
-            src = pkgs.lib.cleanSource ./.;
+            src = src;
             cargoLock.lockFile = ./Cargo.lock;
             doCheck = true;
+          };
+
+          wasm-site = rustPlatform.buildRustPackage {
+            pname = "record-sheet-wasm";
+            version = "0.1.0";
+            src = src;
+            cargoRoot = "website";
+            cargoLock.lockFile = ./website/Cargo.lock;
+            doCheck = false;
+            # The cargo hook hardcodes native target; override buildPhase
+            # to build for wasm32.
+            dontUseCargoBuild = true;
+            buildPhase = ''
+              runHook preBuild
+              CARGO_TARGET_DIR="$(pwd)/target"
+              export CARGO_TARGET_DIR
+              cd "$cargoRoot"
+              cargo build \
+                -j "$NIX_BUILD_CORES" \
+                --target wasm32-unknown-unknown \
+                --offline \
+                --release
+              runHook postBuild
+            '';
+            nativeBuildInputs = [
+              pkgs.wasm-bindgen-cli
+              pkgs.lld # provides wasm-ld for wasm32 linking
+            ];
+            CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_LINKER = "wasm-ld";
+            installPhase = ''
+                          runHook preInstall
+              mkdir -p $out/pkg
+              wasm-bindgen \
+                --target web \
+                --out-dir $out/pkg \
+                "$CARGO_TARGET_DIR/wasm32-unknown-unknown/release/record_sheet_wasm.wasm"
+              # Stage the full site: static assets alongside the wasm pkg.
+              # installPhase cwd is the cargoRoot (website/); files are local.
+              cp index.html app.js style.css "$out/"
+              touch "$out/.nojekyll"
+              runHook postInstall
+            '';
+          };
+
+          # Full staged site, for CI: `nix build .#wasm-build -o site`
+          wasm-build = wasm-site;
+
+          wasm-build-tmp = pkgs.writeShellApplication {
+            name = "wasm-build-tmp";
+            runtimeInputs = [ pkgs.coreutils ];
+            text = ''
+              set -euo pipefail
+              dst="website/tmp"
+              rm -rf "$dst"
+              mkdir -p "$dst"
+              cp -r ${wasm-site}/. "$dst/"
+              chmod -R u+w "$dst"
+              echo ""
+              echo "wasm site written to website/tmp"
+              echo "serve with:"
+              echo "  python3 -m http.server -d website/tmp 8000"
+            '';
           };
         in
         {
           packages = {
-            inherit record-sheet;
+            inherit
+              record-sheet
+              wasm-site
+              wasm-build
+              wasm-build-tmp
+              ;
             default = record-sheet;
           };
           checks.record-sheet = record-sheet;
+          apps = {
+            wasm-build = {
+              type = "app";
+              program = "${pkgs.writeShellScript "wasm-build" ''
+                echo "${wasm-build}"
+              ''}";
+            };
+            wasm-site = {
+              type = "app";
+              program = "${pkgs.writeShellScript "wasm-site" ''
+                echo "${wasm-site}"
+              ''}";
+            };
+          };
         };
       flake = {
         # The usual flake attributes can be defined here, including system-

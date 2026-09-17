@@ -12,3 +12,9 @@ result*
 .jj/
 
 record-sheet-*.pdf
+
+# wasm website
+website/pkg/
+website/target/
+website/tmp/
+website/site/
