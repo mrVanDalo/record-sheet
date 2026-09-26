@@ -12,6 +12,7 @@ result*
 .jj/
 
 record-sheet-*.pdf
+test*.pdf
 
 # wasm website
 website/pkg/

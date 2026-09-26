@@ -136,6 +136,32 @@
               echo "  python3 -m http.server -d website/tmp 8000"
             '';
           };
+          # Generate sample PDFs exercising every title/logo combination.
+          create-test-pdfs = pkgs.writeShellApplication {
+            name = "create-test-pdfs";
+            runtimeInputs = [ record-sheet ];
+            text = ''
+              set -euo pipefail
+              out=''${1:-.}
+              mkdir -p "$out"
+              record-sheet 2026-09-15 -o "$out/test-with-title.pdf" --title "Homework log"
+              record-sheet 2026-09-15 -o "$out/test-with-title-and-logo.pdf" \
+                --title "Homework log" --logo ${./assets/qr-code.png}
+              record-sheet 2026-09-15 -o "$out/test-logo-only.pdf" \
+                --logo ${./assets/qr-code.png}
+              record-sheet 2026-09-15 -o "$out/test-plain.pdf"
+              record-sheet 2026-09-15 -o "$out/test-with-title-qr.pdf" \
+                --title "Homework log" --qr-code "https://example.com/"
+              record-sheet 2026-09-15 -o "$out/test-with-title-and-logo-qr.pdf" \
+                --title "Homework log" --logo ${./assets/qr-code.png} \
+                --qr-code "https://example.com/"
+              record-sheet 2026-09-15 -o "$out/test-logo-only-qr.pdf" \
+                --logo ${./assets/qr-code.png} --qr-code "https://example.com/"
+              record-sheet 2026-09-15 -o "$out/test-plain-qr.pdf" \
+                --qr-code "https://example.com/"
+              echo "8 test PDFs written to $out"
+            '';
+          };
         in
         {
           packages = {
@@ -144,11 +170,18 @@
               wasm-site
               wasm-build
               wasm-build-tmp
+              create-test-pdfs
               ;
             default = record-sheet;
           };
           checks.record-sheet = record-sheet;
           apps = {
+            create-test-pdfs = {
+              type = "app";
+              program = "${pkgs.writeShellScript "create-test-pdfs" ''
+                exec ${create-test-pdfs}/bin/create-test-pdfs "$@"
+              ''}";
+            };
             wasm-build = {
               type = "app";
               program = "${pkgs.writeShellScript "wasm-build" ''

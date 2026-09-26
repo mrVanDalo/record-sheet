@@ -8,6 +8,8 @@ pub use config::render::{MonthCellConfig, PageConfig, RenderConfig, TitleConfig,
 pub use models::sheet::{
     Language, Month, Position, Row, RowGroup, RowGroupKind, Sheet, Week, WeekHeader, Year,
 };
+pub use renders::logo::{LogoImage, decode_png};
+pub use renders::qr::{QrMatrix, encode_qr};
 pub use renders::pdf::render_pdf;
 
 use thiserror::Error;
@@ -19,6 +21,10 @@ pub enum RecordError {
     InvalidDate(String),
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("invalid PNG logo: {0}")]
+    InvalidPng(String),
+    #[error("invalid QR code: {0}")]
+    InvalidQrCode(String),
 }
 
 /// Convenience alias for results in this crate.

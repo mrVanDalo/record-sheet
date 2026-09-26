@@ -116,3 +116,80 @@ fn cli_no_title_keeps_default_layout() {
     let bytes = std::fs::read(temp_dir.join("default.pdf")).unwrap();
     assert!(bytes.starts_with(b"%PDF-"));
 }
+
+/// 1x1 RGBA PNG (200, 30, 40, 128) as raw bytes; same literal as in
+/// `src/renders/logo.rs` and `src/renders/pdf.rs` tests.
+const PNG_1X1_RGBA: &[u8] = &[
+    0x89, 0x50, 0x4e, 0x47, 0xd, 0xa, 0x1a, 0xa, 0x0, 0x0, 0x0, 0xd, 0x49, 0x48, 0x44, 0x52, 0x0,
+    0x0, 0x0, 0x1, 0x0, 0x0, 0x0, 0x1, 0x8, 0x6, 0x0, 0x0, 0x0, 0x1f, 0x15, 0xc4, 0x89, 0x0, 0x0,
+    0x0, 0xd, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x38, 0x21, 0xa7, 0xd1, 0x0, 0x0, 0x4,
+    0x4f, 0x1, 0x8f, 0xd1, 0xc9, 0x9e, 0xa5, 0x0, 0x0, 0x0, 0x0, 0x49, 0x45, 0x4e, 0x44, 0xae,
+    0x42, 0x60, 0x82,
+];
+
+#[test]
+fn cli_logo_with_invalid_png_fails() {
+    let temp_dir = assert_fs::TempDir::new().unwrap();
+    let logo_path = temp_dir.join("logo.png");
+    std::fs::write(&logo_path, b"not a png").unwrap();
+    let mut command = Command::cargo_bin("record-sheet").unwrap();
+    command.current_dir(&temp_dir);
+    let output = command
+        .args(["2026-09-15", "-o", "out.pdf", "--logo"])
+        .arg(&logo_path)
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let stderr = std::str::from_utf8(&output.stderr).unwrap();
+    assert!(stderr.contains("logo.png"), "stderr: {stderr}");
+    assert!(stderr.contains("invalid PNG logo"), "stderr: {stderr}");
+    assert!(!temp_dir.join("out.pdf").exists(), "no PDF must be written");
+}
+
+#[test]
+fn cli_logo_writes_pdf() {
+    let temp_dir = assert_fs::TempDir::new().unwrap();
+    let logo_path = temp_dir.join("logo.png");
+    std::fs::write(&logo_path, PNG_1X1_RGBA).unwrap();
+    let mut command = Command::cargo_bin("record-sheet").unwrap();
+    command.current_dir(&temp_dir);
+    let output = command
+        .args(["2026-09-15", "-o", "out.pdf", "--title", "Week 38", "--logo"])
+        .arg(&logo_path)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let bytes = std::fs::read(temp_dir.join("out.pdf")).unwrap();
+    assert!(bytes.starts_with(b"%PDF-"));
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(text.contains("Week 38"));
+    assert!(text.contains("Im1"));
+    assert!(text.contains("/FlateDecode"));
+}
+
+#[test]
+fn cli_logo_without_title_writes_pdf() {
+    let temp_dir = assert_fs::TempDir::new().unwrap();
+    let logo_path = temp_dir.join("logo.png");
+    std::fs::write(&logo_path, PNG_1X1_RGBA).unwrap();
+    let mut command = Command::cargo_bin("record-sheet").unwrap();
+    command.current_dir(&temp_dir);
+    let output = command
+        .args(["2026-09-15", "-o", "out.pdf", "--logo"])
+        .arg(&logo_path)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let bytes = std::fs::read(temp_dir.join("out.pdf")).unwrap();
+    assert!(bytes.starts_with(b"%PDF-"));
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(text.contains("Im1"));
+}

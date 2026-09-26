@@ -1,6 +1,7 @@
 //! CLI: generate a printable record-sheet PDF for the week grid starting at
 //! a given date (default: today).
 
+use anyhow::Context as _;
 use clap::{Parser, ValueEnum};
 use jiff::civil::Date;
 use record_sheet::{render_pdf, Language, RenderConfig, Sheet, TitleConfig};
@@ -55,6 +56,17 @@ struct CommandLine {
     /// Optional title printed above the calendar grid; shortens the grid.
     #[arg(short, long, value_name = "TEXT")]
     title: Option<String>,
+
+    /// Optional PNG logo in the top-right: beside the title text with
+    /// `--title`, overlaid on the unchanged page corner without.
+    #[arg(long, value_name = "FILE")]
+    logo: Option<PathBuf>,
+
+    /// Optional text rendered as a small QR code in the bottom-right
+    /// corner of the page; the last writing line is shortened to make
+    /// room for it.
+    #[arg(long, value_name = "TEXT")]
+    qr_code: Option<String>,
 }
 
 fn parse_date(input: &str) -> Result<Date, String> {
@@ -70,18 +82,28 @@ fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|| Date::from(jiff::Zoned::now()));
 
     let mut config = RenderConfig::default();
-    if let Some(text) = command_line.title.as_deref() {
+    let logo_path = command_line.logo.as_deref();
+    let logo = logo_path
+        .map(std::fs::read)
+        .transpose()
+        .with_context(|| format!("failed to read the logo file {}", logo_path.unwrap().display()))?
+        .map(|bytes| record_sheet::decode_png(&bytes))
+        .transpose()
+        .with_context(|| format!("failed to decode the logo file {}", logo_path.unwrap().display()))?;
+    if command_line.title.is_some() || logo.is_some() {
         config.title = Some(TitleConfig {
-            text: text.to_owned(),
+            text: command_line.title.unwrap_or_default(),
+            logo,
             ..TitleConfig::default()
         });
     }
+    config.qr_code = command_line.qr_code;
     let sheet = Sheet::new(
         start,
         config.page_fill_weeks(),
         command_line.language.into(),
     );
-    let pdf = render_pdf(&sheet, &config);
+    let pdf = render_pdf(&sheet, &config)?;
 
     let output_path = command_line
         .output

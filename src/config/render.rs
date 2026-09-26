@@ -1,5 +1,10 @@
 //! Rendering configuration for the record-sheet PDF.
 
+use crate::renders::logo::LogoImage;
+
+/// QR code ink edge length in points (drawn square, dark modules only).
+pub(crate) const QR_SIZE: f32 = 20.0;
+
 /// Page geometry in points (origin bottom-left).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PageConfig {
@@ -36,9 +41,15 @@ pub struct MonthCellConfig {
 /// Geometry and font size of the optional title band above the calendar.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TitleConfig {
-    /// The title text, drawn in the band. A `RenderConfig` with a title
-    /// always carries text; use `title: None` for no band at all.
+    /// The title text, drawn in the band. May be empty when only a logo is
+    /// set. The band exists only when text is non-empty: it then shortens
+    /// the grid by [`TitleConfig::height`]. A logo with empty text creates
+    /// no band — it overlays the unchanged page in the top-right corner,
+    /// its ink flush with the top margin and the writing lines.
     pub text: String,
+    /// Optional logo image drawn in the top-right: on the title text's line
+    /// with text, pinned to the page corner without.
+    pub logo: Option<LogoImage>,
     /// Height of the title band; the grid shrinks by this amount when a
     /// title is set.
     pub height: f32,
@@ -51,6 +62,7 @@ impl Default for TitleConfig {
     fn default() -> Self {
         Self {
             text: String::new(),
+            logo: None,
             height: 36.0,
             font_size: 16.0,
         }
@@ -69,6 +81,10 @@ pub struct RenderConfig {
     pub month_cells: MonthCellConfig,
     /// Optional title band above the calendar grid.
     pub title: Option<TitleConfig>,
+    /// Text encoded as a small QR code in the bottom-right corner of the
+    /// page. The bottom writing line is shortened so it never touches the
+    /// QR; the calendar grid keeps its full height. `None` draws nothing.
+    pub qr_code: Option<String>,
 }
 
 impl RenderConfig {
@@ -78,9 +94,17 @@ impl RenderConfig {
     }
 
     /// Number of week rows that fill one page below the optional title band
-    /// (header row + this many week rows between the margins).
+    /// (header row + this many week rows between the margins). A logo
+    /// without title text does not create a band: it overlays the grid, so
+    /// the row count matches a title-less page. A QR code does not change
+    /// the row count either: it sits in the bottom-right corner and the
+    /// last writing line is shortened to clear it.
     pub fn page_fill_weeks(&self) -> usize {
-        let title_height = self.title.as_ref().map_or(0.0, |t| t.height);
+        let title_height = self
+            .title
+            .as_ref()
+            .filter(|t| !t.text.is_empty())
+            .map_or(0.0, |t| t.height);
         ((self.page.height - 2.0 * self.page.margin - title_height) / self.week_cells.height - 1.0)
             as usize
     }
@@ -117,6 +141,7 @@ impl Default for RenderConfig {
                 font_size: 9.0,
             },
             title: None,
+            qr_code: None,
         }
     }
 }
